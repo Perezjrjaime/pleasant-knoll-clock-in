@@ -32,6 +32,16 @@ export interface Project {
   created_at?: string
 }
 
+export interface UserRole {
+  id?: string
+  user_id: string
+  email: string
+  full_name: string
+  role: 'admin' | 'employee'
+  created_at?: string
+  updated_at?: string
+}
+
 export interface User {
   id?: string
   name: string
@@ -157,5 +167,48 @@ export const supabaseOperations = {
     
     if (error) throw error
     return data[0]
+  },
+
+  // User Roles
+  async getUserRole(userId: string) {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+    
+    if (error && error.code !== 'PGRST116') throw error // PGRST116 = no rows returned
+    return data
+  },
+
+  async createUserRole(userRole: Omit<UserRole, 'id' | 'created_at' | 'updated_at'>) {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .insert([userRole])
+      .select()
+    
+    if (error) throw error
+    return data[0]
+  },
+
+  async updateUserRole(userId: string, role: 'admin' | 'employee') {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .update({ role, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .select()
+    
+    if (error) throw error
+    return data[0]
+  },
+
+  async getAllUserRoles() {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('*')
+      .order('full_name')
+    
+    if (error) throw error
+    return data
   }
 }

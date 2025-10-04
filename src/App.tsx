@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User } from 'lucide-react'
-import { supabase, type Project } from './lib/supabase'
+import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield } from 'lucide-react'
+import { supabase, type Project, type UserRole, supabaseOperations } from './lib/supabase'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
 import './App.css'
 
-type TabType = 'clock' | 'projects' | 'hours' | 'history'
+type TabType = 'clock' | 'projects' | 'hours' | 'history' | 'admin'
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('clock')
@@ -71,6 +71,8 @@ function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const [userRole, setUserRole] = useState<'admin' | 'employee' | null>(null)
+  const [allUsers, setAllUsers] = useState<UserRole[]>([])
 
   // Toast notification function
   const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
@@ -83,21 +85,78 @@ function App() {
   // Authentication effects
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ?? null)
+      
+      // Load user role if logged in
+      if (session?.user) {
+        await loadUserRole(session.user.id, session.user.email!, session.user.user_metadata?.full_name)
+      }
+      
       setLoading(false)
     })
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session)
       setUser(session?.user ?? null)
+      
+      // Load user role if logged in
+      if (session?.user) {
+        await loadUserRole(session.user.id, session.user.email!, session.user.user_metadata?.full_name)
+      } else {
+        setUserRole(null)
+      }
+      
       setLoading(false)
     })
 
     return () => subscription.unsubscribe()
   }, [])
+
+  // Load user role from database
+  const loadUserRole = async (userId: string, email: string, fullName?: string) => {
+    try {
+      // Check if user role exists
+      let role = await supabaseOperations.getUserRole(userId)
+      
+      // If no role exists, create one with default 'employee' role
+      if (!role) {
+        role = await supabaseOperations.createUserRole({
+          user_id: userId,
+          email: email,
+          full_name: fullName || email,
+          role: 'employee'
+        })
+      }
+      
+      setUserRole(role.role)
+    } catch (error) {
+      console.error('Error loading user role:', error)
+      showToast('Error loading user permissions', 'error')
+    }
+  }
+
+  // Load all users (for admin)
+  const loadAllUsers = async () => {
+    if (userRole !== 'admin') return
+    
+    try {
+      const users = await supabaseOperations.getAllUserRoles()
+      setAllUsers(users || [])
+    } catch (error) {
+      console.error('Error loading users:', error)
+      showToast('Error loading users', 'error')
+    }
+  }
+
+  // Load all users when admin tab is accessed
+  useEffect(() => {
+    if (activeTab === 'admin' && userRole === 'admin') {
+      loadAllUsers()
+    }
+  }, [activeTab, userRole])
 
   // Sign in with Google function
   const handleGoogleSignIn = async () => {
@@ -1150,6 +1209,75 @@ function App() {
             </div>
           </div>
         )
+      case 'admin':
+        if (userRole !== 'admin') {
+          return (
+            <div className="tab-content">
+              <div className="admin-container">
+                <h2>Access Denied</h2>
+                <p>You do not have permission to access this page.</p>
+              </div>
+            </div>
+          )
+        }
+
+        return (
+          <div className="tab-content">
+            <div className="admin-container">
+              <h2>Admin Panel</h2>
+              
+              {/* User Management */}
+              <div className="admin-section">
+                <h3>User Management</h3>
+                <div className="users-list">
+                  {allUsers.map((userItem) => (
+                    <div key={userItem.id} className="user-card">
+                      <div className="user-info">
+                        <div className="user-name">{userItem.full_name}</div>
+                        <div className="user-email">{userItem.email}</div>
+                      </div>
+                      <div className="user-role-selector">
+                        <select
+                          value={userItem.role}
+                          onChange={async (e) => {
+                            const newRole = e.target.value as 'admin' | 'employee'
+                            try {
+                              await supabaseOperations.updateUserRole(userItem.user_id, newRole)
+                              showToast(`Updated ${userItem.full_name}'s role to ${newRole}`, 'success')
+                              await loadAllUsers() // Refresh the list
+                            } catch (error) {
+                              console.error('Error updating role:', error)
+                              showToast('Failed to update role', 'error')
+                            }
+                          }}
+                          className="role-dropdown"
+                        >
+                          <option value="employee">Employee</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                  {allUsers.length === 0 && (
+                    <div className="no-users">
+                      <p>No users found. Users will appear here after they sign in for the first time.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Future admin features */}
+              <div className="admin-section">
+                <h3>Coming Soon</h3>
+                <ul className="feature-list">
+                  <li>✓ Timecard Approval System</li>
+                  <li>✓ Employee Reports</li>
+                  <li>✓ Project Analytics</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        )
       default:
         return null
     }
@@ -1264,13 +1392,15 @@ function App() {
           <Clock size={24} />
           <span>Clock</span>
         </button>
-        <button 
-          className={`nav-item ${activeTab === 'projects' ? 'active' : ''}`}
-          onClick={() => setActiveTab('projects')}
-        >
-          <Calendar size={24} />
-          <span>Projects</span>
-        </button>
+        {userRole === 'admin' && (
+          <button 
+            className={`nav-item ${activeTab === 'projects' ? 'active' : ''}`}
+            onClick={() => setActiveTab('projects')}
+          >
+            <Calendar size={24} />
+            <span>Projects</span>
+          </button>
+        )}
         <button 
           className={`nav-item ${activeTab === 'hours' ? 'active' : ''}`}
           onClick={() => setActiveTab('hours')}
@@ -1285,6 +1415,15 @@ function App() {
           <History size={24} />
           <span>History</span>
         </button>
+        {userRole === 'admin' && (
+          <button 
+            className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
+            onClick={() => setActiveTab('admin')}
+          >
+            <Shield size={24} />
+            <span>Admin</span>
+          </button>
+        )}
       </nav>
     </div>
   )
