@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Clock, Calendar, BarChart3, History } from 'lucide-react'
+import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User } from 'lucide-react'
 import { supabase, type Project } from './lib/supabase'
+import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
 import './App.css'
 
 type TabType = 'clock' | 'projects' | 'hours' | 'history'
@@ -24,50 +25,6 @@ function App() {
     duration?: number;
   }[]>([])
   
-  // Sample week data for demonstration
-  const [weekSessions] = useState(() => {
-    const today = new Date()
-    const sampleSessions = []
-    
-    // Generate last 5 days of sample data
-    for (let dayOffset = 5; dayOffset >= 1; dayOffset--) {
-      const workDay = new Date(today)
-      workDay.setDate(today.getDate() - dayOffset)
-      
-      // Morning session
-      const morningStart = new Date(workDay)
-      morningStart.setHours(8, 0, 0, 0)
-      const morningEnd = new Date(morningStart)
-      morningEnd.setHours(12, 0, 0, 0)
-      
-      sampleSessions.push({
-        project: dayOffset === 5 ? 'Johnson Residence' : dayOffset === 4 ? 'City Park' : dayOffset === 3 ? 'Shopping Mall Landscaping' : dayOffset === 2 ? 'Office Complex' : 'Elementary School',
-        location: dayOffset === 5 ? 'Johnson Residence' : dayOffset === 4 ? 'City Park' : dayOffset === 3 ? 'Shopping Mall' : dayOffset === 2 ? 'Office Complex' : 'Elementary School',
-        role: dayOffset === 5 ? 'Excavator Operator' : dayOffset === 4 ? 'General Labor' : dayOffset === 3 ? 'Hydro Mulch Machine Operator' : dayOffset === 2 ? 'Crew Leader' : 'Irrigation Tech',
-        startTime: morningStart,
-        endTime: morningEnd,
-        duration: 240 // 4 hours
-      })
-      
-      // Afternoon session
-      const afternoonStart = new Date(workDay)
-      afternoonStart.setHours(13, 0, 0, 0)
-      const afternoonEnd = new Date(afternoonStart)
-      afternoonEnd.setHours(17, 30, 0, 0)
-      
-      sampleSessions.push({
-        project: dayOffset === 5 ? 'Johnson Residence' : dayOffset === 4 ? 'Riverside Apartments' : dayOffset === 3 ? 'The Shop' : dayOffset === 2 ? 'St. Mary\'s Church' : 'City Park',
-        location: dayOffset === 5 ? 'Johnson Residence' : dayOffset === 4 ? 'Riverside Apartments' : dayOffset === 3 ? 'The Shop' : dayOffset === 2 ? 'St. Mary\'s Church' : 'City Park',
-        role: dayOffset === 5 ? 'General Labor' : dayOffset === 4 ? 'Landscape Foreman' : dayOffset === 3 ? 'General Labor' : dayOffset === 2 ? 'Tree Care Specialist' : 'Skid Steer Operator',
-        startTime: afternoonStart,
-        endTime: afternoonEnd,
-        duration: 270 // 4.5 hours
-      })
-    }
-    
-    return sampleSessions
-  })
-  
   // Common landscaping roles
   const commonRoles = [
     'General Labor',
@@ -88,6 +45,84 @@ function App() {
   // Projects (loaded from database)
   const [projects, setProjects] = useState<Project[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  
+  // Project management state
+  const [showAddProject, setShowAddProject] = useState(false)
+  const [projectFilter, setProjectFilter] = useState<'all' | 'active' | 'pending'>('all')
+  const [newProject, setNewProject] = useState({
+    name: '',
+    type: '',
+    location: '',
+    status: 'pending' as 'active' | 'pending'
+  })
+  
+  // Edit project state
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
+  const [showEditProject, setShowEditProject] = useState(false)
+  
+  // Toast notification state
+  const [toast, setToast] = useState<{
+    message: string
+    type: 'success' | 'error' | 'warning'
+    show: boolean
+  }>({ message: '', type: 'success', show: false })
+
+  // Authentication state
+  const [session, setSession] = useState<Session | null>(null)
+  const [user, setUser] = useState<SupabaseUser | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // Toast notification function
+  const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
+    setToast({ message, type, show: true })
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, show: false }))
+    }, 4000)
+  }
+
+  // Authentication effects
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setUser(session?.user ?? null)
+      setLoading(false)
+    })
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      setUser(session?.user ?? null)
+      setLoading(false)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Sign in with Google function
+  const handleGoogleSignIn = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    })
+    
+    if (error) {
+      showToast('Error signing in with Google', 'error')
+      console.error('Google sign-in error:', error)
+    }
+  }
+
+  // Sign out function
+  const handleSignOut = async () => {
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      showToast('Error signing out', 'error')
+    } else {
+      showToast('Signed out successfully', 'success')
+    }
+  }
 
   // Load projects from database on app start
   useEffect(() => {
@@ -102,23 +137,15 @@ function App() {
         
         if (error) {
           console.error('Error loading projects:', error)
-          // Fall back to sample data if database fails
-          setProjects([
-            { id: 'johnson', name: 'Johnson Residence', type: 'Landscape Installation', status: 'active', location: 'Johnson Residence' },
-            { id: 'park', name: 'City Park', type: 'Weekly Maintenance', status: 'active', location: 'City Park' },
-            { id: 'mall', name: 'Shopping Mall Landscaping', type: 'Commercial Maintenance', status: 'active', location: 'Shopping Mall' }
-          ] as Project[])
+          // Start with empty projects array - let admins add their own
+          setProjects([])
         } else {
           setProjects(data || [])
         }
       } catch (error) {
         console.error('Database connection error:', error)
-        // Fall back to sample data
-        setProjects([
-          { id: 'johnson', name: 'Johnson Residence', type: 'Landscape Installation', status: 'active', location: 'Johnson Residence' },
-          { id: 'park', name: 'City Park', type: 'Weekly Maintenance', status: 'active', location: 'City Park' },
-          { id: 'mall', name: 'Shopping Mall Landscaping', type: 'Commercial Maintenance', status: 'active', location: 'Shopping Mall' }
-        ] as Project[])
+        // Start with empty projects array - let admins add their own
+        setProjects([])
       } finally {
         setIsLoading(false)
       }
@@ -126,6 +153,161 @@ function App() {
     
     loadProjects()
   }, [])
+
+  // Project management functions
+  const addNewProject = async () => {
+    console.log('addNewProject called with:', newProject)
+    
+    if (!newProject.name.trim() || !newProject.type.trim() || !newProject.location.trim()) {
+      console.log('Validation failed - missing required fields')
+      showToast('Please fill in all required fields (Name, Type, and Location)', 'error')
+      return
+    }
+
+    try {
+      const projectData = {
+        name: newProject.name.trim(),
+        type: newProject.type.trim(),
+        location: newProject.location.trim(),
+        status: newProject.status,
+        created_at: new Date().toISOString()
+      }
+
+      console.log('Sending project data to Supabase:', projectData)
+
+      const { data, error } = await supabase
+        .from('projects')
+        .insert([projectData])
+        .select()
+        .single()
+
+      console.log('Supabase response - data:', data, 'error:', error)
+
+      if (error) {
+        console.error('Supabase error adding project:', error)
+        showToast(`Failed to add project: ${error.message}`, 'error')
+        return
+      }
+
+      console.log('Project added successfully:', data)
+
+      // Add to local state
+      setProjects(prev => [...prev, data])
+      
+      // Reset form
+      setNewProject({
+        name: '',
+        type: '',
+        location: '',
+        status: 'pending'
+      })
+      setShowAddProject(false)
+      
+      showToast('Project added successfully!', 'success')
+      
+    } catch (err) {
+      console.error('Unexpected error adding project:', err)
+      showToast(`Failed to add project: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error')
+    }
+  }
+
+  const deleteProject = async (projectId: string) => {
+    if (!confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectId)
+
+      if (error) {
+        console.error('Error deleting project:', error)
+        showToast(`Failed to delete project: ${error.message}`, 'error')
+        return
+      }
+
+      // Remove from local state
+      setProjects(prev => prev.filter(p => p.id !== projectId))
+      showToast('Project deleted successfully!', 'success')
+      
+    } catch (err) {
+      console.error('Unexpected error deleting project:', err)
+      showToast(`Failed to delete project: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error')
+    }
+  }
+
+  const startEditProject = (project: Project) => {
+    setEditingProject(project)
+    setShowEditProject(true)
+  }
+
+  const updateProject = async () => {
+    if (!editingProject || !editingProject.name.trim() || !editingProject.type.trim() || !editingProject.location.trim()) {
+      showToast('Please fill in all required fields (Name, Type, and Location)', 'error')
+      return
+    }
+
+    try {
+      const projectData = {
+        name: editingProject.name.trim(),
+        type: editingProject.type.trim(),
+        location: editingProject.location.trim(),
+        status: editingProject.status
+      }
+
+      const { data, error } = await supabase
+        .from('projects')
+        .update(projectData)
+        .eq('id', editingProject.id)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error updating project:', error)
+        showToast(`Failed to update project: ${error.message}`, 'error')
+        return
+      }
+
+      // Update local state
+      setProjects(prev => prev.map(p => p.id === editingProject.id ? data : p))
+      setShowEditProject(false)
+      setEditingProject(null)
+      showToast('Project updated successfully!', 'success')
+      
+    } catch (err) {
+      console.error('Unexpected error updating project:', err)
+      showToast(`Failed to update project: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error')
+    }
+  }
+
+  const updateProjectStatus = async (projectId: string, newStatus: 'active' | 'pending') => {
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ status: newStatus })
+        .eq('id', projectId)
+
+      if (error) {
+        console.error('Error updating project status:', error)
+        alert('Failed to update project status')
+        return
+      }
+
+      // Update local state
+      setProjects(prev => 
+        prev.map(project => 
+          project.id === projectId 
+            ? { ...project, status: newStatus }
+            : project
+        )
+      )
+    } catch (err) {
+      console.error('Error updating project status:', err)
+      alert('Failed to update project status')
+    }
+  }
 
   // Update current time every second
   useEffect(() => {
@@ -385,34 +567,236 @@ function App() {
           </div>
         )
       case 'projects':
+        const filteredProjects = projects.filter(project => {
+          if (projectFilter === 'all') return true
+          return project.status === projectFilter
+        })
+        
         return (
           <div className="tab-content">
             <div className="projects-container">
-              <h2>Active Projects</h2>
-              <p>Select a project to work on today</p>
+              <div className="projects-header">
+                <h2>Project Management</h2>
+                
+                {/* Filter buttons */}
+                <div className="project-filters">
+                  <button 
+                    className={`filter-btn ${projectFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setProjectFilter('all')}
+                  >
+                    All ({projects.length})
+                  </button>
+                  <button 
+                    className={`filter-btn ${projectFilter === 'active' ? 'active' : ''}`}
+                    onClick={() => setProjectFilter('active')}
+                  >
+                    Active ({projects.filter(p => p.status === 'active').length})
+                  </button>
+                  <button 
+                    className={`filter-btn ${projectFilter === 'pending' ? 'active' : ''}`}
+                    onClick={() => setProjectFilter('pending')}
+                  >
+                    Pending ({projects.filter(p => p.status === 'pending').length})
+                  </button>
+                </div>
+              </div>
               
+              {/* Add new project form */}
+              {showAddProject && (
+                <div className="add-project-form">
+                  <h3>Add New Project</h3>
+                  <div className="form-row">
+                    <input
+                      type="text"
+                      placeholder="Project Name *"
+                      value={newProject.name}
+                      onChange={(e) => setNewProject(prev => ({ ...prev, name: e.target.value }))}
+                    />
+                    <select
+                      value={newProject.type}
+                      onChange={(e) => setNewProject(prev => ({ ...prev, type: e.target.value }))}
+                    >
+                      <option value="" disabled>Project Type *</option>
+                      <option value="Landscape Installation">Landscape Installation</option>
+                      <option value="Weekly Maintenance">Weekly Maintenance</option>
+                      <option value="Commercial Maintenance">Commercial Maintenance</option>
+                      <option value="Hardscaping">Hardscaping</option>
+                      <option value="Irrigation">Irrigation</option>
+                      <option value="Tree Service">Tree Service</option>
+                    </select>
+                  </div>
+                  <div className="form-row">
+                    <input
+                      type="text"
+                      placeholder="Location/Address *"
+                      value={newProject.location}
+                      onChange={(e) => setNewProject(prev => ({ ...prev, location: e.target.value }))}
+                    />
+                    <select
+                      value={newProject.status}
+                      onChange={(e) => setNewProject(prev => ({ ...prev, status: e.target.value as 'active' | 'pending' }))}
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="active">Active</option>
+                    </select>
+                  </div>
+                  <div className="form-actions">
+                    <button className="save-btn" onClick={addNewProject}>
+                      Save Project
+                    </button>
+                    <button 
+                      className="cancel-btn" 
+                      onClick={() => {
+                        setShowAddProject(false)
+                        setNewProject({
+                          name: '',
+                          type: '',
+                          location: '',
+                          status: 'pending'
+                        })
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {/* Edit Project Form */}
+              {showEditProject && editingProject && (
+                <div className="add-project-form">
+                  <h3>Edit Project</h3>
+                  <div className="form-row">
+                    <input
+                      type="text"
+                      placeholder="Project Name"
+                      value={editingProject.name}
+                      onChange={(e) => setEditingProject(prev => prev ? { ...prev, name: e.target.value } : null)}
+                    />
+                    <select
+                      value={editingProject.type}
+                      onChange={(e) => setEditingProject(prev => prev ? { ...prev, type: e.target.value } : null)}
+                    >
+                      <option value="">Select Project Type</option>
+                      <option value="Landscape Installation">Landscape Installation</option>
+                      <option value="Hardscape">Hardscape</option>
+                      <option value="Irrigation">Irrigation</option>
+                      <option value="Maintenance">Maintenance</option>
+                      <option value="Tree Services">Tree Services</option>
+                      <option value="Lawn Care">Lawn Care</option>
+                      <option value="Snow Removal">Snow Removal</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div className="form-row">
+                    <input
+                      type="text"
+                      placeholder="Project Location"
+                      value={editingProject.location}
+                      onChange={(e) => setEditingProject(prev => prev ? { ...prev, location: e.target.value } : null)}
+                    />
+                    <div>
+                      <label>Status:</label>
+                      <select
+                        value={editingProject.status}
+                        onChange={(e) => setEditingProject(prev => prev ? { ...prev, status: e.target.value as 'active' | 'pending' } : null)}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="active">Active</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="form-actions">
+                    <button className="save-btn" onClick={updateProject}>
+                      Update Project
+                    </button>
+                    <button 
+                      className="cancel-btn" 
+                      onClick={() => {
+                        setShowEditProject(false)
+                        setEditingProject(null)
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {/* Project list */}
               <div className="project-list">
-                {projects.filter(project => project.status === 'active').map((project) => (
+                {filteredProjects.map((project) => (
                   <div key={project.id} className="project-card">
                     <div className="project-header">
                       <h3>{project.name}</h3>
-                      <span className="project-status active">Active</span>
+                      <div className="project-actions">
+                        <button
+                          className="edit-btn"
+                          onClick={() => startEditProject(project)}
+                          title="Edit Project"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          className="delete-btn"
+                          onClick={() => project.id && deleteProject(project.id)}
+                          title="Delete Project"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
-                    <p className="project-type">{project.type}</p>
-                    <div className="project-actions">
-                      <button className="project-details-btn">
-                        View Details
-                      </button>
+                    <div className="project-details">
+                      <p className="project-type"><strong>Type:</strong> {project.type}</p>
+                      <p className="project-location"><strong>Location:</strong> {project.location}</p>
+                    </div>
+                    <div className="project-status-section">
+                      <div className="project-status-controls">
+                        <label>Status:</label>
+                        <select
+                          value={project.status}
+                          onChange={(e) => {
+                            const newStatus = e.target.value as 'active' | 'pending'
+                            if (project.id) {
+                              updateProjectStatus(project.id, newStatus)
+                            }
+                          }}
+                          className={`status-select ${project.status}`}
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="active">Active</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                 ))}
+                
+                {filteredProjects.length === 0 && (
+                  <div className="no-projects">
+                    <p>No {projectFilter === 'all' ? '' : projectFilter} projects found.</p>
+                    {!showAddProject && (
+                      <button 
+                        className="add-project-btn"
+                        onClick={() => setShowAddProject(true)}
+                      >
+                        + Add First Project
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               
-              <div className="add-project-section">
-                <button className="add-project-btn">
-                  + Add New Project
-                </button>
-              </div>
+              {/* Add project button */}
+              {!showAddProject && filteredProjects.length > 0 && (
+                <div className="add-project-section">
+                  <button 
+                    className="add-project-btn"
+                    onClick={() => setShowAddProject(true)}
+                  >
+                    + Add New Project
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )
@@ -424,9 +808,9 @@ function App() {
         const totalTodayHours = Math.floor(totalTodayMinutes / 60)
         const remainingMinutes = totalTodayMinutes % 60
         
-        // Calculate week totals (including sample data)
-        const allWeekSessions = [...weekSessions, ...todaysSessions.filter(s => s.duration)]
-        const totalWeekMinutes = allWeekSessions.reduce((total, session) => total + (session.duration || 0), 0)
+        // Calculate week totals (only real sessions)
+        const completedSessions = todaysSessions.filter(s => s.duration)
+        const totalWeekMinutes = completedSessions.reduce((total, session) => total + (session.duration || 0), 0)
         const totalWeekHours = Math.floor(totalWeekMinutes / 60)
         const weekRemainingMinutes = totalWeekMinutes % 60
         
@@ -449,8 +833,8 @@ function App() {
             return breakdown
           }, {} as Record<string, any>)
 
-        // Group week sessions by day
-        const weeklyBreakdown = allWeekSessions.reduce((breakdown, session) => {
+        // Group real sessions by day
+        const weeklyBreakdown = completedSessions.reduce((breakdown, session) => {
           const dayKey = session.startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
           if (!breakdown[dayKey]) {
             breakdown[dayKey] = {
@@ -486,8 +870,8 @@ function App() {
                   <p className="hours-number">
                     {totalWeekHours}h {weekRemainingMinutes}m
                   </p>
-                  <p className="hours-subtitle">
-                    {allWeekSessions.length} total sessions
+                                    <p className="hours-subtitle">
+                    {completedSessions.length} total sessions
                   </p>
                 </div>
               </div>
@@ -598,7 +982,7 @@ function App() {
         // Filter data based on selected time range
         const getFilteredSessions = () => {
           const now = new Date()
-          const allSessions = [...weekSessions, ...todaysSessions.filter(s => s.duration)]
+          const allSessions = [...todaysSessions.filter(s => s.duration)]
           
           switch (historyFilter) {
             case 'this-week':
@@ -771,16 +1155,102 @@ function App() {
     }
   }
 
+  // Show loading screen
+  if (loading) {
+    return (
+      <div className="app">
+        <div className="loading-container">
+          <div className="loading-content">
+            <img 
+              src="/Pleasant Knoll Logo.jpg" 
+              alt="Pleasant Knoll Landscaping" 
+              className="loading-logo"
+            />
+            <div className="loading-spinner"></div>
+            <p>Loading...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show login screen if not authenticated
+  if (!session) {
+    return (
+      <div className="app">
+        <div className="auth-container">
+          <div className="auth-card">
+            <div className="auth-header">
+              <img 
+                src="/Pleasant Knoll Logo.jpg" 
+                alt="Pleasant Knoll Landscaping" 
+                className="auth-logo"
+              />
+              <h2>Employee Clock-In System</h2>
+              <p>Sign in with your Google account to continue</p>
+            </div>
+            <div className="auth-form">
+              <button 
+                className="google-signin-btn"
+                onClick={handleGoogleSignIn}
+              >
+                <svg className="google-icon" width="20" height="20" viewBox="0 0 24 24">
+                  <path fill="#4285f4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34a853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#fbbc05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="#ea4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Continue with Google
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="app">
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className={`toast toast-${toast.type}`}>
+          <div className="toast-icon">
+            {toast.type === 'success' && <CheckCircle size={20} />}
+            {toast.type === 'error' && <XCircle size={20} />}
+            {toast.type === 'warning' && <AlertCircle size={20} />}
+          </div>
+          <span className="toast-message">{toast.message}</span>
+        </div>
+      )}
+      
       {/* Main Content */}
       <main className="main-content">
-        <div className="logo-container">
-          <img 
-            src="/Pleasant Knoll Logo.jpg" 
-            alt="Pleasant Knoll Landscaping" 
-            className="company-logo"
-          />
+        <div className="app-header">
+          <div className="logo-container">
+            <img 
+              src="/Pleasant Knoll Logo.jpg" 
+              alt="Pleasant Knoll Landscaping" 
+              className="company-logo"
+            />
+          </div>
+          <div className="user-info">
+            <div className="user-details">
+              <div className="user-avatar">
+                <User size={20} />
+              </div>
+              <div className="user-text">
+                <span className="user-name">{user?.user_metadata?.full_name || user?.email}</span>
+                <span className="user-email">{user?.email}</span>
+              </div>
+            </div>
+            <button 
+              className="logout-btn"
+              onClick={handleSignOut}
+              title="Sign Out"
+            >
+              <LogOut size={18} />
+            </button>
+          </div>
         </div>
         {renderTabContent()}
       </main>

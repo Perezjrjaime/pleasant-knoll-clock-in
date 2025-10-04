@@ -13,7 +13,7 @@ html {
 }
 
 body {
-  background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 20%, #dcfce7 40%, #bbf7d0 60%, #22c55e 80%, #16a34a 100%);
+  background: #ffffff;
   color: #000000;
   margin: 0;
   padding: 0;
@@ -31,6 +31,7 @@ body {
   margin: 0;
   padding: 0;
   width: 100%;
+  background: #ffffff;
 }
 
 /* Logo Container */
@@ -54,7 +55,6 @@ body {
   flex: 1;
   padding: 1rem;
   padding-bottom: 120px; /* Space for fixed bottom nav */
-  max-width: 1200px;
   margin: 0 auto;
   width: 100%;
 }
@@ -372,8 +372,60 @@ body {
 .project-header {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.project-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: 1rem;
+}
+
+.edit-btn, .delete-btn {
+  padding: 0.4rem;
+  border: 2px solid #000000;
+  border-radius: 6px;
+  background: linear-gradient(145deg, #ffffff, #f0f0f0);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
   align-items: center;
-  margin-bottom: 0.5rem;
+  justify-content: center;
+  color: #000000;
+  min-width: 32px;
+  height: 32px;
+}
+
+.edit-btn:hover {
+  background: linear-gradient(145deg, #d4ed9f, #a7d15c);
+  transform: translateY(-1px);
+}
+
+.delete-btn:hover {
+  background: linear-gradient(145deg, #ffcccb, #ff6b6b);
+  transform: translateY(-1px);
+}
+
+.project-details {
+  margin-bottom: 1rem;
+}
+
+.project-status-section {
+  border-top: 1px solid #e5e5e5;
+  padding-top: 1rem;
+}
+
+.project-status-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.project-status-controls label {
+  font-weight: 500;
+  color: #000000;
+  font-size: 0.9rem;
 }
 
 .project-card h3 {
@@ -449,6 +501,190 @@ body {
   border-color: #22c55e;
   background: #ffffff;
   transform: translateY(-1px);
+}
+
+/* Enhanced Project Management Styles */
+.projects-header {
+  margin-bottom: 2rem;
+}
+
+.project-filters {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin: 1.5rem 0;
+}
+
+.filter-btn {
+  padding: 0.5rem 1rem;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #000000;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.filter-btn:hover {
+  background: #f8f9fa;
+}
+
+.filter-btn.active {
+  background: #22c55e;
+  color: white;
+  border-color: #22c55e;
+}
+
+.add-project-form {
+  background: #ffffff;
+  border: 2px solid #000000;
+  border-radius: 12px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+.add-project-form h3 {
+  color: #000000;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.form-row input,
+.form-row select,
+.add-project-form textarea {
+  padding: 0.75rem;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  font-size: 1rem;
+  background: #ffffff;
+  color: #000000;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.form-row input:focus,
+.form-row select:focus,
+.add-project-form textarea:focus {
+  outline: none;
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+}
+
+.add-project-form textarea {
+  width: 100%;
+  resize: vertical;
+  margin-bottom: 1rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.save-btn,
+.cancel-btn {
+  padding: 0.75rem 2rem;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.save-btn {
+  background: #22c55e;
+  color: white;
+  border-color: #22c55e;
+}
+
+.save-btn:hover {
+  background: #16a34a;
+  border-color: #16a34a;
+}
+
+.cancel-btn {
+  background: #ffffff;
+  color: #000000;
+}
+
+.cancel-btn:hover {
+  background: #f8f9fa;
+}
+
+.project-status-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-select {
+  padding: 0.25rem 0.5rem;
+  border: 2px solid #000000;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.status-select.active {
+  background: #22c55e;
+  color: white;
+  border-color: #22c55e;
+}
+
+.status-select.pending {
+  background: #fbbf24;
+  color: white;
+  border-color: #f59e0b;
+}
+
+.project-details {
+  margin-top: 1rem;
+}
+
+.project-details p {
+  margin: 0.5rem 0;
+  color: #000000;
+  font-size: 0.95rem;
+  text-align: left;
+}
+
+.no-projects {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #666;
+}
+
+.no-projects p {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+@media (max-width: 768px) {
+  .project-filters {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .form-actions {
+    flex-direction: column;
+  }
 }
 
 .select-project-btn {
@@ -1361,4 +1597,384 @@ body {
   color: #000000;
   margin: 0.5rem 0;
   font-size: 1rem;
+}
+
+/* Toast Notifications */
+.toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(10px);
+  animation: slideInRight 0.3s ease-out;
+  max-width: 400px;
+  font-weight: 500;
+  border: 2px solid;
+}
+
+.toast-success {
+  background: linear-gradient(145deg, rgba(212, 237, 159, 0.95), rgba(167, 209, 92, 0.95));
+  border-color: #a7d15c;
+  color: #2d5016;
+}
+
+.toast-error {
+  background: linear-gradient(145deg, rgba(255, 235, 235, 0.95), rgba(255, 200, 200, 0.95));
+  border-color: #ff6b6b;
+  color: #8b1a1a;
+}
+
+.toast-warning {
+  background: linear-gradient(145deg, rgba(255, 248, 220, 0.95), rgba(255, 235, 179, 0.95));
+  border-color: #ffa726;
+  color: #8b4a00;
+}
+
+.toast-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.toast-message {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Mobile responsive toast */
+@media (max-width: 768px) {
+  .toast {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    max-width: none;
+    font-size: 14px;
+  }
+}
+
+/* Authentication Styles */
+.auth-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  padding: 2rem;
+}
+
+.auth-card {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 3rem;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: none;
+  transition: none;
+}
+
+.auth-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.auth-logo {
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  margin: 0 auto 1.5rem;
+  display: block;
+}
+
+.auth-header h1 {
+  color: #000000;
+  font-size: 1.8rem;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+.auth-header h2 {
+  color: #a7d15c;
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.auth-header p {
+  color: #666666;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.auth-form {
+  margin-top: 2rem;
+}
+
+.google-signin-btn {
+  width: 100%;
+  padding: 12px 20px;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  background: linear-gradient(145deg, #ffffff, #f0f0f0);
+  color: #000000;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.google-signin-btn:hover {
+  background: linear-gradient(145deg, #d4ed9f, #a7d15c);
+  transform: translateY(-1px);
+}
+
+.google-signin-btn:active {
+  transform: translateY(0);
+}
+
+.google-icon {
+  flex-shrink: 0;
+}
+
+/* Loading Styles */
+.loading-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #a7d15c 0%, #d4ed9f 50%, #ffffff 100%);
+  position: relative;
+}
+
+.loading-content {
+  text-align: center;
+  max-width: 300px;
+  position: relative;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(20px);
+  padding: 3rem 2rem;
+  border-radius: 20px;
+  box-shadow: 
+    0 20px 40px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.loading-logo {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  margin-bottom: 2rem;
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(247, 250, 252, 0.9));
+  padding: 15px;
+  box-shadow: 
+    0 8px 16px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(167, 209, 92, 0.2);
+  border-top: 4px solid #a7d15c;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1.5rem;
+  box-shadow: 0 4px 8px rgba(167, 209, 92, 0.2);
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-content p {
+  color: #374151;
+  font-size: 1.1rem;
+  margin: 0;
+  font-weight: 600;
+  background: linear-gradient(135deg, #374151 0%, #6b7280 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* App Header with User Info */
+.app-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding: 0 1rem;
+  position: relative;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  position: absolute;
+  right: 1rem;
+}
+
+.user-details {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(145deg, #d4ed9f, #a7d15c);
+  border: 2px solid #000000;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #000000;
+}
+
+.user-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.user-name {
+  font-weight: 600;
+  color: #000000;
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.user-email {
+  font-size: 0.8rem;
+  color: #666666;
+  line-height: 1.2;
+}
+
+.logout-btn {
+  padding: 0.5rem;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  background: linear-gradient(145deg, #ffffff, #f0f0f0);
+  color: #000000;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logout-btn:hover {
+  background: linear-gradient(145deg, #ffcccb, #ff6b6b);
+  transform: translateY(-1px);
+}
+
+/* Mobile Auth Responsive */
+@media (max-width: 768px) {
+  .auth-container {
+    padding: 1rem;
+  }
+  
+  .auth-card {
+    padding: 2.5rem 2rem;
+    border-radius: 20px;
+    max-width: 100%;
+  }
+  
+  .auth-logo {
+    width: 100px;
+    height: 100px;
+    padding: 15px;
+  }
+  
+  .auth-header h1 {
+    font-size: 1.6rem;
+  }
+  
+  .auth-header h2 {
+    font-size: 1.1rem;
+  }
+  
+  .auth-header p {
+    font-size: 0.9rem;
+  }
+  
+  .google-signin-btn {
+    padding: 14px 20px;
+    font-size: 15px;
+  }
+  
+  .app-header {
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .user-info {
+    align-self: stretch;
+    justify-content: space-between;
+  }
+  
+  .user-text {
+    align-items: flex-start;
+  }
+  
+  .loading-content {
+    padding: 2rem 1.5rem;
+    margin: 0 1rem;
+  }
+  
+  .loading-logo {
+    width: 80px;
+    height: 80px;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-container {
+    padding: 0.5rem;
+  }
+  
+  .auth-card {
+    padding: 2rem 1.5rem;
+    margin: 0.5rem;
+  }
+  
+  .auth-header h1 {
+    font-size: 1.4rem;
+  }
+  
+  .auth-header h2 {
+    font-size: 1rem;
+  }
 }
