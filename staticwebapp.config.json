@@ -7,13 +7,5 @@
   ],
   "navigationFallback": {
     "rewrite": "/index.html"
-  },
-  "mimeTypes": {
-    ".json": "application/json",
-    ".js": "text/javascript",
-    ".css": "text/css"
-  },
-  "globalHeaders": {
-    "Cache-Control": "no-cache"
   }
 }
