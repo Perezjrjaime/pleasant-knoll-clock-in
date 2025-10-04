@@ -19,6 +19,24 @@
       }
     },
     {
+      "route": "*.jpg",
+      "headers": {
+        "Content-Type": "image/jpeg"
+      }
+    },
+    {
+      "route": "*.png",
+      "headers": {
+        "Content-Type": "image/png"
+      }
+    },
+    {
+      "route": "*.svg",
+      "headers": {
+        "Content-Type": "image/svg+xml"
+      }
+    },
+    {
       "route": "/*",
       "rewrite": "/index.html"
     }
