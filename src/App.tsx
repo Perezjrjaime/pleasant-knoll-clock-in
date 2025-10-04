@@ -1162,7 +1162,7 @@ function App() {
         <div className="loading-container">
           <div className="loading-content">
             <img 
-              src="/Pleasant Knoll Logo.jpg" 
+              src="/pleasant-knoll-logo.jpg" 
               alt="Pleasant Knoll Landscaping" 
               className="loading-logo"
             />
@@ -1182,7 +1182,7 @@ function App() {
           <div className="auth-card">
             <div className="auth-header">
               <img 
-                src="/Pleasant Knoll Logo.jpg" 
+                src="/pleasant-knoll-logo.jpg" 
                 alt="Pleasant Knoll Landscaping" 
                 className="auth-logo"
               />
@@ -1228,7 +1228,7 @@ function App() {
         <div className="app-header">
           <div className="logo-container">
             <img 
-              src="/Pleasant Knoll Logo.jpg" 
+              src="/pleasant-knoll-logo.jpg" 
               alt="Pleasant Knoll Landscaping" 
               className="company-logo"
             />
