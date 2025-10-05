@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield, UserCheck, UserX } from 'lucide-react'
 import { supabase, type Project, type UserRole, supabaseOperations } from './lib/supabase'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
@@ -24,6 +24,24 @@ function App() {
     startTime: Date;
     endTime?: Date;
     duration?: number;
+  }[]>([])
+  
+  // Weekly sessions from database
+  const [weeklySessions, setWeeklySessions] = useState<{
+    id: string;
+    project: string;
+    location: string;
+    role: string;
+    startTime: Date;
+    endTime: Date;
+    duration: number;
+    status: 'draft' | 'submitted' | 'approved' | 'rejected';
+    weekEndingDate?: Date;
+    employeeInitials?: string;
+    submittedAt?: Date;
+    approvedBy?: string;
+    approvedAt?: Date;
+    adminNotes?: string;
   }[]>([])
   
   // Common landscaping roles
@@ -65,6 +83,21 @@ function App() {
     type: 'success' | 'error' | 'warning'
     show: boolean
   }>({ message: '', type: 'success', show: false })
+
+  // Timesheet submission state
+  const [employeeInitials, setEmployeeInitials] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Admin timesheet management state
+  const [pendingTimesheets, setPendingTimesheets] = useState<any[]>([])
+  const [timesheetFilter, setTimesheetFilter] = useState<'submitted' | 'approved' | 'rejected' | 'all'>('submitted')
+  const [selectedTimesheet, setSelectedTimesheet] = useState<any | null>(null)
+  const [adminNotes, setAdminNotes] = useState('')
+  const [isProcessingTimesheet, setIsProcessingTimesheet] = useState(false)
+
+  // Session editing state
+  const [editingSession, setEditingSession] = useState<any | null>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
 
   // Authentication state
   const [session, setSession] = useState<Session | null>(null)
@@ -172,6 +205,13 @@ function App() {
     }
   }
 
+  // Auto-switch admin users to admin tab on login
+  useEffect(() => {
+    if (userRole === 'admin' && activeTab === 'clock') {
+      setActiveTab('admin')
+    }
+  }, [userRole])
+
   // Load all users when admin tab is accessed
   useEffect(() => {
     if (activeTab === 'admin' && userRole === 'admin') {
@@ -233,6 +273,74 @@ function App() {
     
     loadProjects()
   }, [])
+
+  // Load weekly sessions from database
+  useEffect(() => {
+    const loadWeeklySessions = async () => {
+      if (!user) return
+      
+      try {
+        // Get the start of this week (Sunday)
+        const now = new Date()
+        const startOfWeek = new Date(now)
+        startOfWeek.setDate(now.getDate() - now.getDay()) // Go to Sunday
+        startOfWeek.setHours(0, 0, 0, 0)
+        
+        const { data, error } = await supabase
+          .from('work_sessions')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('start_time', startOfWeek.toISOString())
+          .order('start_time', { ascending: false })
+        
+        if (error) {
+          console.error('Error loading weekly sessions:', error)
+        } else {
+          const sessions = (data || []).map((session: any) => ({
+            id: session.id,
+            project: session.project,
+            location: session.location,
+            role: session.role,
+            startTime: new Date(session.start_time),
+            endTime: new Date(session.end_time),
+            duration: session.duration,
+            status: session.status,
+            weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
+            employeeInitials: session.employee_initials,
+            submittedAt: session.submitted_at ? new Date(session.submitted_at) : undefined,
+            approvedBy: session.approved_by,
+            approvedAt: session.approved_at ? new Date(session.approved_at) : undefined,
+            adminNotes: session.admin_notes
+          }))
+          setWeeklySessions(sessions)
+          
+          // Debug: log first session details
+          if (sessions.length > 0) {
+            console.log('First session:', {
+              startTime: sessions[0].startTime,
+              startTimeString: sessions[0].startTime.toDateString(),
+              duration: sessions[0].duration,
+              endTime: sessions[0].endTime,
+              project: sessions[0].project
+            })
+          }
+        }
+      } catch (error) {
+        console.error('Database error loading sessions:', error)
+      }
+    }
+    
+    loadWeeklySessions()
+    
+    // Reload sessions when we switch to the hours tab
+    const interval = setInterval(() => {
+      if (activeTab === 'hours') {
+        loadWeeklySessions()
+      }
+    }, 10000) // Refresh every 10 seconds when on hours tab
+    
+    return () => clearInterval(interval)
+  }, [user, activeTab])
 
   // Project management functions
   const addNewProject = async () => {
@@ -425,30 +533,434 @@ function App() {
     endTime: Date;
     duration: number;
   }) => {
+    if (!user) {
+      console.error('No authenticated user - cannot save session')
+      return
+    }
+
     try {
-      // For now, we'll save without user_id since we don't have authentication yet
-      // When Google OAuth is implemented, we'll use the actual user_id
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('work_sessions')
         .insert({
-          user_id: null, // Will be set when authentication is implemented
+          user_id: user.id,
           project: sessionData.project,
           location: sessionData.location,
           role: sessionData.role,
           start_time: sessionData.startTime.toISOString(),
           end_time: sessionData.endTime.toISOString(),
-          duration: sessionData.duration
+          duration: sessionData.duration,
+          status: 'draft' // New sessions start as draft
         })
+        .select()
       
       if (error) {
         console.error('Error saving work session:', error)
+        console.error('Error details:', JSON.stringify(error, null, 2))
+        alert(`Failed to save work session: ${error.message || 'Unknown error'}`)
       } else {
-        console.log('Work session saved successfully!')
+        console.log('Work session saved successfully!', data)
+        // Reload weekly sessions to include the new one
+        const startOfWeek = new Date()
+        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+        startOfWeek.setHours(0, 0, 0, 0)
+        
+        const { data: updatedSessions } = await supabase
+          .from('work_sessions')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('start_time', startOfWeek.toISOString())
+          .order('start_time', { ascending: false })
+        
+        if (updatedSessions) {
+          const sessions = updatedSessions.map((session: any) => ({
+            id: session.id,
+            project: session.project,
+            location: session.location,
+            role: session.role,
+            startTime: new Date(session.start_time),
+            endTime: new Date(session.end_time),
+            duration: session.duration,
+            status: session.status,
+            weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
+            employeeInitials: session.employee_initials,
+            submittedAt: session.submitted_at ? new Date(session.submitted_at) : undefined,
+            approvedBy: session.approved_by,
+            approvedAt: session.approved_at ? new Date(session.approved_at) : undefined,
+            adminNotes: session.admin_notes
+          }))
+          setWeeklySessions(sessions)
+        }
       }
     } catch (error) {
       console.error('Database error:', error)
     }
   }
+
+  // Submit timesheet for the week
+  const submitTimesheet = async () => {
+    if (!user) return
+    if (!employeeInitials.trim()) {
+      showToast('Please enter your initials to submit', 'error')
+      return
+    }
+    
+    const initials = employeeInitials.trim().toUpperCase()
+    
+    // Validate initials (2-3 characters)
+    if (initials.length < 2 || initials.length > 3) {
+      showToast('Initials should be 2-3 characters', 'error')
+      return
+    }
+    
+    try {
+      setIsSubmitting(true)
+      
+      // Get all draft sessions for this week
+      const startOfWeek = new Date()
+      startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+      startOfWeek.setHours(0, 0, 0, 0)
+      
+      // Calculate week ending date (Saturday)
+      const weekEndingDate = new Date(startOfWeek)
+      weekEndingDate.setDate(startOfWeek.getDate() + 6) // Saturday
+      
+      const { error } = await supabase
+        .from('work_sessions')
+        .update({
+          status: 'submitted',
+          employee_initials: initials,
+          submitted_at: new Date().toISOString(),
+          week_ending_date: weekEndingDate.toISOString()
+        })
+        .eq('user_id', user.id)
+        .eq('status', 'draft')
+        .gte('start_time', startOfWeek.toISOString())
+      
+      if (error) {
+        console.error('Error submitting timesheet:', error)
+        showToast('Failed to submit timesheet. Please try again.', 'error')
+      } else {
+        showToast('Timesheet submitted successfully! Waiting for admin approval.', 'success')
+        setEmployeeInitials('')
+        
+        // Reload sessions to show updated status
+        const { data: updatedSessions } = await supabase
+          .from('work_sessions')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('start_time', startOfWeek.toISOString())
+          .order('start_time', { ascending: false })
+        
+        if (updatedSessions) {
+          const sessions = updatedSessions.map((session: any) => ({
+            id: session.id,
+            project: session.project,
+            location: session.location,
+            role: session.role,
+            startTime: new Date(session.start_time),
+            endTime: new Date(session.end_time),
+            duration: session.duration,
+            status: session.status,
+            weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
+            employeeInitials: session.employee_initials,
+            submittedAt: session.submitted_at ? new Date(session.submitted_at) : undefined,
+            approvedBy: session.approved_by,
+            approvedAt: session.approved_at ? new Date(session.approved_at) : undefined,
+            adminNotes: session.admin_notes
+          }))
+          setWeeklySessions(sessions)
+        }
+      }
+    } catch (error) {
+      console.error('Error submitting timesheet:', error)
+      showToast('An error occurred. Please try again.', 'error')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Load pending timesheets (admin only)
+  const loadPendingTimesheets = async () => {
+    if (!user || userRole !== 'admin') return
+
+    try {
+      console.log('Loading timesheets with filter:', timesheetFilter)
+      
+      const { data, error } = await supabase
+        .from('work_sessions')
+        .select('*')
+        .in('status', timesheetFilter === 'all' 
+          ? ['draft', 'submitted', 'approved', 'rejected'] 
+          : [timesheetFilter])
+        .order('submitted_at', { ascending: false })
+
+      if (error) {
+        console.error('Error loading timesheets:', error)
+        showToast('Failed to load timesheets', 'error')
+        return
+      }
+      
+      console.log('Raw timesheet data:', data)
+
+      if (!data || data.length === 0) {
+        console.log('No timesheets found with filter:', timesheetFilter)
+        setPendingTimesheets([])
+        return
+      }
+
+      // Get user names from user_roles table
+      const userIds = [...new Set(data.map((s: any) => s.user_id))]
+      const { data: userRoles } = await supabase
+        .from('user_roles')
+        .select('user_id, full_name, email')
+        .in('user_id', userIds)
+      
+      // Create a map of user_id -> full_name
+      const userNameMap = new Map()
+      if (userRoles) {
+        userRoles.forEach((u: any) => {
+          userNameMap.set(u.user_id, u.full_name || u.email)
+        })
+      }
+
+      // Group by user and week_ending_date
+      const grouped = (data || []).reduce((acc: any, session: any) => {
+        const key = `${session.user_id}-${session.week_ending_date || 'no-week'}`
+        if (!acc[key]) {
+          acc[key] = {
+            userId: session.user_id,
+            userName: userNameMap.get(session.user_id) || 'Unknown User',
+            weekEndingDate: session.week_ending_date,
+            status: session.status,
+            employeeInitials: session.employee_initials,
+            submittedAt: session.submitted_at,
+            sessions: [],
+            totalMinutes: 0
+          }
+        }
+        acc[key].sessions.push(session)
+        acc[key].totalMinutes += session.duration || 0
+        return acc
+      }, {})
+
+      const timesheets = Object.values(grouped)
+      console.log('Grouped timesheets:', timesheets)
+      setPendingTimesheets(timesheets)
+    } catch (error) {
+      console.error('Error loading timesheets:', error)
+      showToast('An error occurred while loading timesheets', 'error')
+    }
+  }
+
+  // Approve timesheet
+  const approveTimesheet = async (timesheet: any) => {
+    if (!user || userRole !== 'admin') return
+
+    try {
+      setIsProcessingTimesheet(true)
+      
+      const sessionIds = timesheet.sessions.map((s: any) => s.id)
+      
+      const { error } = await supabase
+        .from('work_sessions')
+        .update({
+          status: 'approved',
+          approved_by: user.id,
+          approved_at: new Date().toISOString(),
+          admin_notes: adminNotes || null
+        })
+        .in('id', sessionIds)
+
+      if (error) {
+        console.error('Error approving timesheet:', error)
+        showToast('Failed to approve timesheet', 'error')
+      } else {
+        showToast(`Approved timesheet for ${timesheet.userName}`, 'success')
+        setAdminNotes('')
+        setSelectedTimesheet(null)
+        loadPendingTimesheets()
+      }
+    } catch (error) {
+      console.error('Error approving timesheet:', error)
+      showToast('An error occurred', 'error')
+    } finally {
+      setIsProcessingTimesheet(false)
+    }
+  }
+
+  // Reject timesheet
+  const rejectTimesheet = async (timesheet: any) => {
+    if (!user || userRole !== 'admin') return
+    if (!adminNotes.trim()) {
+      showToast('Please provide a reason for rejection', 'warning')
+      return
+    }
+
+    try {
+      setIsProcessingTimesheet(true)
+      
+      const sessionIds = timesheet.sessions.map((s: any) => s.id)
+      
+      const { error } = await supabase
+        .from('work_sessions')
+        .update({
+          status: 'rejected',
+          approved_by: user.id,
+          approved_at: new Date().toISOString(),
+          admin_notes: adminNotes
+        })
+        .in('id', sessionIds)
+
+      if (error) {
+        console.error('Error rejecting timesheet:', error)
+        showToast('Failed to reject timesheet', 'error')
+      } else {
+        showToast(`Rejected timesheet for ${timesheet.userName}`, 'success')
+        setAdminNotes('')
+        setSelectedTimesheet(null)
+        loadPendingTimesheets()
+      }
+    } catch (error) {
+      console.error('Error rejecting timesheet:', error)
+      showToast('An error occurred', 'error')
+    } finally {
+      setIsProcessingTimesheet(false)
+    }
+  }
+
+  // Edit session (employee can edit draft, admin can edit any)
+  const updateSession = async (sessionId: string, updates: any) => {
+    if (!user) return
+
+    try {
+      const { error } = await supabase
+        .from('work_sessions')
+        .update(updates)
+        .eq('id', sessionId)
+
+      if (error) {
+        console.error('Error updating session:', error)
+        showToast('Failed to update session', 'error')
+        return false
+      } else {
+        showToast('Session updated successfully', 'success')
+        setShowEditModal(false)
+        setEditingSession(null)
+        
+        // Reload sessions
+        if (userRole === 'admin') {
+          loadPendingTimesheets()
+        }
+        
+        // Reload weekly sessions for employee
+        const startOfWeek = new Date()
+        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+        startOfWeek.setHours(0, 0, 0, 0)
+        
+        const { data: updatedSessions } = await supabase
+          .from('work_sessions')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('start_time', startOfWeek.toISOString())
+          .order('start_time', { ascending: false })
+        
+        if (updatedSessions) {
+          const sessions = updatedSessions.map((session: any) => ({
+            id: session.id,
+            project: session.project,
+            location: session.location,
+            role: session.role,
+            startTime: new Date(session.start_time),
+            endTime: new Date(session.end_time),
+            duration: session.duration,
+            status: session.status,
+            weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
+            employeeInitials: session.employee_initials,
+            submittedAt: session.submitted_at ? new Date(session.submitted_at) : undefined,
+            approvedBy: session.approved_by,
+            approvedAt: session.approved_at ? new Date(session.approved_at) : undefined,
+            adminNotes: session.admin_notes
+          }))
+          setWeeklySessions(sessions)
+        }
+        
+        return true
+      }
+    } catch (error) {
+      console.error('Error updating session:', error)
+      showToast('An error occurred', 'error')
+      return false
+    }
+  }
+
+  // Delete session
+  const deleteSession = async (sessionId: string) => {
+    if (!user) return
+    if (!confirm('Are you sure you want to delete this session?')) return
+
+    try {
+      const { error } = await supabase
+        .from('work_sessions')
+        .delete()
+        .eq('id', sessionId)
+
+      if (error) {
+        console.error('Error deleting session:', error)
+        showToast('Failed to delete session', 'error')
+      } else {
+        showToast('Session deleted successfully', 'success')
+        setShowEditModal(false)
+        setEditingSession(null)
+        
+        // Reload sessions
+        if (userRole === 'admin') {
+          loadPendingTimesheets()
+        }
+        
+        // Reload weekly sessions for employee
+        const startOfWeek = new Date()
+        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+        startOfWeek.setHours(0, 0, 0, 0)
+        
+        const { data: updatedSessions } = await supabase
+          .from('work_sessions')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('start_time', startOfWeek.toISOString())
+          .order('start_time', { ascending: false })
+        
+        if (updatedSessions) {
+          const sessions = updatedSessions.map((session: any) => ({
+            id: session.id,
+            project: session.project,
+            location: session.location,
+            role: session.role,
+            startTime: new Date(session.start_time),
+            endTime: new Date(session.end_time),
+            duration: session.duration,
+            status: session.status,
+            weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
+            employeeInitials: session.employee_initials,
+            submittedAt: session.submitted_at ? new Date(session.submitted_at) : undefined,
+            approvedBy: session.approved_by,
+            approvedAt: session.approved_at ? new Date(session.approved_at) : undefined,
+            adminNotes: session.admin_notes
+          }))
+          setWeeklySessions(sessions)
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error)
+      showToast('An error occurred', 'error')
+    }
+  }
+
+  // Load timesheets when admin tab is active
+  useEffect(() => {
+    if (userRole === 'admin' && activeTab === 'admin') {
+      loadPendingTimesheets()
+    }
+  }, [userRole, activeTab, timesheetFilter])
 
   const handleClockAction = async () => {
     const newLocation = getLocationFromProject(selectedProject)
@@ -612,7 +1124,10 @@ function App() {
               {todaysSessions.length > 0 && (
                 <div className="todays-summary">
                   <div className="summary-header">
-                    <h4>Today's Work</h4>
+                    <div className="summary-title-group">
+                      <h4>Today's Sessions</h4>
+                      <p className="summary-subtitle">✓ Auto-saved to your timesheet</p>
+                    </div>
                     <button 
                       className="clear-sessions-btn"
                       onClick={() => {
@@ -881,148 +1396,199 @@ function App() {
           </div>
         )
       case 'hours':
-        const totalTodayMinutes = todaysSessions
-          .filter(session => session.duration)
-          .reduce((total, session) => total + (session.duration || 0), 0)
+        // Combine in-memory and database sessions
+        const allSessions = [
+          ...todaysSessions.filter(s => s.duration).map(s => ({
+            ...s,
+            id: 'temp-' + Math.random(),
+            status: 'draft' as const
+          })),
+          ...weeklySessions
+        ]
         
-        const totalTodayHours = Math.floor(totalTodayMinutes / 60)
-        const remainingMinutes = totalTodayMinutes % 60
+        // Calculate week totals (all completed sessions)
+        const completedSessions = allSessions.filter(s => s.duration)
         
-        // Calculate week totals (only real sessions)
-        const completedSessions = todaysSessions.filter(s => s.duration)
-        const totalWeekMinutes = completedSessions.reduce((total, session) => total + (session.duration || 0), 0)
-        const totalWeekHours = Math.floor(totalWeekMinutes / 60)
-        const weekRemainingMinutes = totalWeekMinutes % 60
+        // Create Monday through Sunday breakdown
+        const startOfWeek = new Date()
+        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()) // Go to Sunday
+        startOfWeek.setHours(0, 0, 0, 0)
         
-        // Group sessions by project for breakdown
-        const projectBreakdown = todaysSessions
-          .filter(session => session.duration)
-          .reduce((breakdown, session) => {
-            const key = `${session.project} - ${session.role}`
-            if (!breakdown[key]) {
-              breakdown[key] = {
-                project: session.project,
-                role: session.role,
-                location: session.location,
-                totalMinutes: 0,
-                sessions: []
-              }
-            }
-            breakdown[key].totalMinutes += session.duration || 0
-            breakdown[key].sessions.push(session)
-            return breakdown
-          }, {} as Record<string, any>)
-
-        // Group real sessions by day
-        const weeklyBreakdown = completedSessions.reduce((breakdown, session) => {
-          const dayKey = session.startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
-          if (!breakdown[dayKey]) {
-            breakdown[dayKey] = {
-              date: session.startTime,
-              totalMinutes: 0,
-              sessions: []
-            }
+        const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        const weekDays = daysOfWeek.map((dayName, index) => {
+          const dayDate = new Date(startOfWeek)
+          dayDate.setDate(startOfWeek.getDate() + index)
+          
+          const daySessions = completedSessions.filter(session => 
+            session.startTime.toDateString() === dayDate.toDateString()
+          )
+          
+          const totalMinutes = daySessions.reduce((total, session) => total + (session.duration || 0), 0)
+          
+          return {
+            name: dayName,
+            date: dayDate,
+            sessions: daySessions,
+            totalMinutes,
+            isToday: dayDate.toDateString() === new Date().toDateString()
           }
-          breakdown[dayKey].totalMinutes += session.duration || 0
-          breakdown[dayKey].sessions.push(session)
-          return breakdown
-        }, {} as Record<string, any>)
+        })
 
         return (
           <div className="tab-content">
             <div className="hours-container">
               <h2>Time Tracking</h2>
-              
-              {/* Weekly Summary */}
-              <div className="hours-summary">
-                <div className="hours-card">
-                  <h3>Today's Total</h3>
-                  <p className="hours-number">
-                    {totalTodayHours}h {remainingMinutes}m
-                  </p>
-                  <p className="hours-subtitle">
-                    {todaysSessions.filter(s => s.duration).length} sessions completed
-                  </p>
-                </div>
-                
-                <div className="hours-card">
-                  <h3>This Week</h3>
-                  <p className="hours-number">
-                    {totalWeekHours}h {weekRemainingMinutes}m
-                  </p>
-                                    <p className="hours-subtitle">
-                    {completedSessions.length} total sessions
-                  </p>
-                </div>
-              </div>
 
-              {/* Weekly Breakdown */}
+              {/* Monday through Sunday Breakdown */}
               <div className="weekly-breakdown">
-                <h3>This Week's Daily Breakdown</h3>
                 <div className="weekly-list">
-                  {Object.entries(weeklyBreakdown)
-                    .sort(([, a], [, b]) => (a as any).date.getTime() - (b as any).date.getTime())
-                    .map(([day, data]: [string, any]) => {
-                      const hours = Math.floor(data.totalMinutes / 60)
-                      const minutes = data.totalMinutes % 60
-                      const isToday = data.date.toDateString() === new Date().toDateString()
-                      
-                      return (
-                        <div key={day} className={`weekly-day-item ${isToday ? 'today' : ''}`}>
-                          <div className="weekly-day-header">
-                            <div className="weekly-day-name">
-                              {day} {isToday && <span className="today-badge">Today</span>}
-                            </div>
-                            <div className="weekly-day-time">{hours}h {minutes}m</div>
+                  {weekDays.map((day) => {
+                    const hours = Math.floor(day.totalMinutes / 60)
+                    const minutes = day.totalMinutes % 60
+                    
+                    // Use day.sessions which already has the sessions for this day
+                    // Filter to only show sessions with duration (completed sessions)
+                    const daySessions = day.sessions.filter(s => s.duration && s.endTime)
+                    
+                    return (
+                      <div key={day.name} className={`weekly-day-item ${day.isToday ? 'today' : ''} ${day.sessions.length === 0 ? 'empty-day' : ''}`}>
+                        <div className="weekly-day-header">
+                          <div className="weekly-day-name">
+                            {day.name} {day.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            {day.isToday && <span className="today-badge">Today</span>}
                           </div>
-                          <div className="weekly-day-projects">
-                            {data.sessions.reduce((projects: any[], session: any) => {
-                              const existing = projects.find(p => p.project === session.project && p.role === session.role)
-                              if (existing) {
-                                existing.duration += session.duration
-                              } else {
-                                projects.push({
-                                  project: session.project,
-                                  role: session.role,
-                                  duration: session.duration
-                                })
-                              }
-                              return projects
-                            }, []).map((proj: any, idx: number) => (
-                              <div key={idx} className="weekly-project-tag">
-                                {proj.project} ({proj.role}) - {Math.floor(proj.duration / 60)}h {proj.duration % 60}m
+                          <div className="weekly-day-time">
+                            {day.sessions.length > 0 ? `${hours}h ${minutes}m` : '—'}
+                          </div>
+                        </div>
+                        
+                        {/* Show individual sessions for this day */}
+                        {daySessions.length > 0 && (
+                          <div className="day-sessions-list">
+                            {daySessions.map((session) => (
+                              <div key={session.id} className={`day-session-card status-${session.status}`}>
+                                <div className="session-time-range">
+                                  {session.startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {session.endTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                </div>
+                                <div className="session-project-role">
+                                  <strong>{session.project}</strong> • {session.role}
+                                </div>
+                                <div className="session-duration-status">
+                                  <span className="session-duration">{Math.floor(session.duration / 60)}h {session.duration % 60}m</span>
+                                  <span className={`session-status-badge ${session.status}`}>
+                                    {session.status === 'draft' ? '✏️ Draft' : 
+                                     session.status === 'submitted' ? '⏳ Submitted' : 
+                                     session.status === 'approved' ? '✅ Approved' : 
+                                     '❌ Rejected'}
+                                  </span>
+                                </div>
+                                
+                                {/* Edit/Delete buttons only for draft sessions */}
+                                {session.status === 'draft' && (
+                                  <div className="session-actions">
+                                    <button
+                                      className="edit-session-btn"
+                                      onClick={() => {
+                                        setEditingSession(session)
+                                        setShowEditModal(true)
+                                      }}
+                                      title="Edit Session"
+                                    >
+                                      <Edit2 size={14} /> Edit
+                                    </button>
+                                    <button
+                                      className="delete-session-btn"
+                                      onClick={() => deleteSession(session.id)}
+                                      title="Delete Session"
+                                    >
+                                      <Trash2 size={14} /> Delete
+                                    </button>
+                                  </div>
+                                )}
+                                
+                                {/* Show admin notes for rejected sessions */}
+                                {session.status === 'rejected' && session.adminNotes && (
+                                  <div className="session-admin-notes">
+                                    <AlertCircle size={14} />
+                                    <span><strong>Admin:</strong> {session.adminNotes}</span>
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
-                        </div>
-                      )
-                    })}
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
-              {/* Today's Project Breakdown (if any) */}
-              {Object.keys(projectBreakdown).length > 0 && (
-                <div className="project-breakdown">
-                  <h3>Today's Project Breakdown</h3>
-                  <div className="breakdown-list">
-                    {Object.values(projectBreakdown).map((item: any, index) => {
-                      const hours = Math.floor(item.totalMinutes / 60)
-                      const minutes = item.totalMinutes % 60
-                      return (
-                        <div key={index} className="breakdown-item">
-                          <div className="breakdown-header">
-                            <div className="breakdown-project">{item.project}</div>
-                            <div className="breakdown-time">{hours}h {minutes}m</div>
-                          </div>
-                          <div className="breakdown-details">
-                            <div className="breakdown-role">Role: {item.role}</div>
-                            <div className="breakdown-location">Location: {item.location}</div>
-                            <div className="breakdown-sessions">{item.sessions.length} session{item.sessions.length !== 1 ? 's' : ''}</div>
-                          </div>
-                        </div>
-                      )
-                    })}
+              {/* Timesheet Submission */}
+              {weeklySessions.length > 0 && (
+                <div className="timesheet-submission">
+                  <h3>Weekly Timesheet Submission</h3>
+                  
+                  {/* Show status badges */}
+                  <div className="status-summary">
+                    {weeklySessions.filter(s => s.status === 'draft').length > 0 && (
+                      <div className="status-badge draft">
+                        {weeklySessions.filter(s => s.status === 'draft').length} sessions pending submission
+                      </div>
+                    )}
+                    {weeklySessions.filter(s => s.status === 'submitted').length > 0 && (
+                      <div className="status-badge submitted">
+                        {weeklySessions.filter(s => s.status === 'submitted').length} sessions awaiting approval
+                      </div>
+                    )}
+                    {weeklySessions.filter(s => s.status === 'approved').length > 0 && (
+                      <div className="status-badge approved">
+                        {weeklySessions.filter(s => s.status === 'approved').length} sessions approved
+                      </div>
+                    )}
+                    {weeklySessions.filter(s => s.status === 'rejected').length > 0 && (
+                      <div className="status-badge rejected">
+                        {weeklySessions.filter(s => s.status === 'rejected').length} sessions rejected
+                      </div>
+                    )}
                   </div>
+                  
+                  {/* Submission form - only show if there are draft sessions */}
+                  {weeklySessions.filter(s => s.status === 'draft').length > 0 && (
+                    <div className="submission-form">
+                      <p className="submission-instructions">
+                        Review your hours for the entire week above, then submit your timesheet for admin approval.
+                        All sessions will be submitted together. Your initials will be recorded with this submission.
+                      </p>
+                      <div className="initials-input-group">
+                        <label htmlFor="initials">Your Initials:</label>
+                        <input
+                          id="initials"
+                          type="text"
+                          value={employeeInitials}
+                          onChange={(e) => setEmployeeInitials(e.target.value.toUpperCase())}
+                          placeholder="e.g. JP"
+                          maxLength={3}
+                          className="initials-input"
+                          disabled={isSubmitting}
+                        />
+                        <button
+                          onClick={submitTimesheet}
+                          disabled={isSubmitting || !employeeInitials.trim()}
+                          className="submit-timesheet-btn"
+                        >
+                          {isSubmitting ? 'Submitting...' : 'Submit Weekly Timesheet'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Show message if all submitted/approved */}
+                  {weeklySessions.filter(s => s.status === 'draft').length === 0 && (
+                    <div className="submission-complete">
+                      <CheckCircle size={24} />
+                      <p>All sessions for this week have been submitted or approved.</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1044,17 +1610,6 @@ function App() {
                   )}
                 </div>
               </div>
-
-              {/* Empty State for Today */}
-              {todaysSessions.filter(s => s.duration).length === 0 && (
-                <div className="empty-hours">
-                  <div className="empty-message">
-                    <h3>No completed sessions today</h3>
-                    <p>Clock in on the Clock tab to start tracking your time!</p>
-                    <p className="demo-note">📊 The data above shows sample week data for demonstration</p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )
@@ -1254,6 +1809,175 @@ function App() {
           <div className="tab-content">
             <div className="admin-container">
               <h2>Admin Panel</h2>
+              
+              {/* Timesheet Management Section */}
+              <div className="admin-section timesheets-section">
+                <h3>
+                  <Calendar size={20} style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} />
+                  Timesheet Management
+                </h3>
+                
+                {/* Filter Buttons */}
+                <div className="timesheet-filters">
+                  <button 
+                    className={`filter-btn ${timesheetFilter === 'submitted' ? 'active' : ''}`}
+                    onClick={() => setTimesheetFilter('submitted')}
+                  >
+                    Pending Approval ({pendingTimesheets.filter((t: any) => t.status === 'submitted').length})
+                  </button>
+                  <button 
+                    className={`filter-btn ${timesheetFilter === 'approved' ? 'active' : ''}`}
+                    onClick={() => setTimesheetFilter('approved')}
+                  >
+                    Approved ({pendingTimesheets.filter((t: any) => t.status === 'approved').length})
+                  </button>
+                  <button 
+                    className={`filter-btn ${timesheetFilter === 'rejected' ? 'active' : ''}`}
+                    onClick={() => setTimesheetFilter('rejected')}
+                  >
+                    Rejected ({pendingTimesheets.filter((t: any) => t.status === 'rejected').length})
+                  </button>
+                  <button 
+                    className={`filter-btn ${timesheetFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setTimesheetFilter('all')}
+                  >
+                    All ({pendingTimesheets.length})
+                  </button>
+                </div>
+
+                {/* Timesheets List */}
+                {pendingTimesheets.length > 0 ? (
+                  <div className="timesheets-list">
+                    {pendingTimesheets.map((timesheet: any, index: number) => {
+                      const hours = Math.floor(timesheet.totalMinutes / 60)
+                      const minutes = timesheet.totalMinutes % 60
+                      const isSelected = selectedTimesheet === timesheet
+                      
+                      return (
+                        <div key={index} className={`timesheet-card ${timesheet.status}`}>
+                          <div className="timesheet-header" onClick={() => setSelectedTimesheet(isSelected ? null : timesheet)}>
+                            <div className="timesheet-user">
+                              <div className="timesheet-name">{timesheet.userName}</div>
+                              <div className="timesheet-initials">Initials: {timesheet.employeeInitials || 'N/A'}</div>
+                            </div>
+                            <div className="timesheet-details">
+                              <div className="timesheet-hours">{hours}h {minutes}m</div>
+                              <div className="timesheet-week">
+                                Week ending: {timesheet.weekEndingDate ? new Date(timesheet.weekEndingDate).toLocaleDateString() : 'N/A'}
+                              </div>
+                              {timesheet.submittedAt && (
+                                <div className="timesheet-submitted">
+                                  Submitted: {new Date(timesheet.submittedAt).toLocaleDateString()}
+                                </div>
+                              )}
+                            </div>
+                            <div className={`timesheet-status-badge ${timesheet.status}`}>
+                              {timesheet.status.charAt(0).toUpperCase() + timesheet.status.slice(1)}
+                            </div>
+                          </div>
+
+                          {/* Expanded Details */}
+                          {isSelected && (
+                            <div className="timesheet-expanded">
+                              <h4>Session Details</h4>
+                              <div className="sessions-detail-list">
+                                {timesheet.sessions.map((session: any) => (
+                                  <div key={session.id} className="session-detail-item">
+                                    <div className="session-detail-row">
+                                      <div className="session-detail-field">
+                                        <strong>Date:</strong> {new Date(session.start_time).toLocaleDateString()}
+                                      </div>
+                                      <div className="session-detail-field">
+                                        <strong>Time:</strong> {new Date(session.start_time).toLocaleTimeString()} - {new Date(session.end_time).toLocaleTimeString()}
+                                      </div>
+                                      <div className="session-detail-field">
+                                        <strong>Duration:</strong> {Math.floor(session.duration / 60)}h {session.duration % 60}m
+                                      </div>
+                                    </div>
+                                    <div className="session-detail-row">
+                                      <div className="session-detail-field">
+                                        <strong>Project:</strong> {session.project}
+                                      </div>
+                                      <div className="session-detail-field">
+                                        <strong>Role:</strong> {session.role}
+                                      </div>
+                                      <div className="session-detail-field">
+                                        <strong>Location:</strong> {session.location}
+                                      </div>
+                                    </div>
+                                    <div className="session-actions">
+                                      <button 
+                                        className="edit-session-btn"
+                                        onClick={() => {
+                                          setEditingSession(session)
+                                          setShowEditModal(true)
+                                        }}
+                                      >
+                                        <Edit2 size={14} /> Edit
+                                      </button>
+                                      <button 
+                                        className="delete-session-btn"
+                                        onClick={() => deleteSession(session.id)}
+                                      >
+                                        <Trash2 size={14} /> Delete
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Admin Actions */}
+                              {timesheet.status === 'submitted' && (
+                                <div className="admin-actions">
+                                  <div className="admin-notes-input">
+                                    <label>Admin Notes (optional for approval, required for rejection):</label>
+                                    <textarea
+                                      value={adminNotes}
+                                      onChange={(e) => setAdminNotes(e.target.value)}
+                                      placeholder="Add notes about this timesheet..."
+                                      rows={3}
+                                    />
+                                  </div>
+                                  <div className="action-buttons">
+                                    <button
+                                      className="approve-timesheet-btn"
+                                      onClick={() => approveTimesheet(timesheet)}
+                                      disabled={isProcessingTimesheet}
+                                    >
+                                      <CheckCircle size={16} />
+                                      {isProcessingTimesheet ? 'Processing...' : 'Approve Timesheet'}
+                                    </button>
+                                    <button
+                                      className="reject-timesheet-btn"
+                                      onClick={() => rejectTimesheet(timesheet)}
+                                      disabled={isProcessingTimesheet || !adminNotes.trim()}
+                                    >
+                                      <XCircle size={16} />
+                                      {isProcessingTimesheet ? 'Processing...' : 'Reject Timesheet'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Show admin notes for approved/rejected */}
+                              {(timesheet.status === 'approved' || timesheet.status === 'rejected') && timesheet.sessions[0]?.admin_notes && (
+                                <div className="admin-notes-display">
+                                  <strong>Admin Notes:</strong>
+                                  <p>{timesheet.sessions[0].admin_notes}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="empty-timesheets">
+                    <p>No {timesheetFilter !== 'all' ? timesheetFilter : ''} timesheets to display.</p>
+                  </div>
+                )}
+              </div>
               
               {/* Pending Approvals Section */}
               {pendingUsers.length > 0 && (
@@ -1500,46 +2224,152 @@ function App() {
 
       {/* Bottom Navigation */}
       <nav className="bottom-nav">
-        <button 
-          className={`nav-item ${activeTab === 'clock' ? 'active' : ''}`}
-          onClick={() => setActiveTab('clock')}
-        >
-          <Clock size={24} />
-          <span>Clock</span>
-        </button>
-        {userRole === 'admin' && (
-          <button 
-            className={`nav-item ${activeTab === 'projects' ? 'active' : ''}`}
-            onClick={() => setActiveTab('projects')}
-          >
-            <Calendar size={24} />
-            <span>Projects</span>
-          </button>
-        )}
-        <button 
-          className={`nav-item ${activeTab === 'hours' ? 'active' : ''}`}
-          onClick={() => setActiveTab('hours')}
-        >
-          <BarChart3 size={24} />
-          <span>Hours</span>
-        </button>
-        <button 
-          className={`nav-item ${activeTab === 'history' ? 'active' : ''}`}
-          onClick={() => setActiveTab('history')}
-        >
-          <History size={24} />
-          <span>History</span>
-        </button>
-        {userRole === 'admin' && (
-          <button 
-            className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
-            onClick={() => setActiveTab('admin')}
-          >
-            <Shield size={24} />
-            <span>Admin</span>
-          </button>
+        {userRole === 'admin' ? (
+          // Admin-only navigation: Projects, History, Admin
+          <>
+            <button 
+              className={`nav-item ${activeTab === 'projects' ? 'active' : ''}`}
+              onClick={() => setActiveTab('projects')}
+            >
+              <Calendar size={24} />
+              <span>Projects</span>
+            </button>
+            <button 
+              className={`nav-item ${activeTab === 'history' ? 'active' : ''}`}
+              onClick={() => setActiveTab('history')}
+            >
+              <History size={24} />
+              <span>History</span>
+            </button>
+            <button 
+              className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
+              onClick={() => setActiveTab('admin')}
+            >
+              <Shield size={24} />
+              <span>Admin</span>
+            </button>
+          </>
+        ) : (
+          // Employee navigation: Clock and My Hours (timesheet)
+          <>
+            <button 
+              className={`nav-item ${activeTab === 'clock' ? 'active' : ''}`}
+              onClick={() => setActiveTab('clock')}
+            >
+              <Clock size={24} />
+              <span>Clock</span>
+            </button>
+            <button 
+              className={`nav-item ${activeTab === 'hours' ? 'active' : ''}`}
+              onClick={() => setActiveTab('hours')}
+            >
+              <BarChart3 size={24} />
+              <span>My Hours</span>
+            </button>
+          </>
         )}
       </nav>
+
+      {/* Edit Session Modal */}
+      {showEditModal && editingSession && (
+        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Edit Session</h3>
+            <div className="edit-session-form">
+              <div className="form-group">
+                <label>Project:</label>
+                <select
+                  value={editingSession.project}
+                  onChange={(e) => setEditingSession({...editingSession, project: e.target.value})}
+                >
+                  <option value="The Shop">The Shop</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.name}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <label>Role:</label>
+                <select
+                  value={editingSession.role}
+                  onChange={(e) => setEditingSession({...editingSession, role: e.target.value})}
+                >
+                  {commonRoles.map(role => (
+                    <option key={role} value={role}>{role}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Start Time:</label>
+                  <input
+                    type="time"
+                    value={editingSession.start_time ? new Date(editingSession.start_time).toTimeString().slice(0, 5) : ''}
+                    onChange={(e) => {
+                      const [hours, minutes] = e.target.value.split(':')
+                      const newStart = new Date(editingSession.start_time)
+                      newStart.setHours(parseInt(hours), parseInt(minutes))
+                      setEditingSession({...editingSession, start_time: newStart.toISOString()})
+                    }}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>End Time:</label>
+                  <input
+                    type="time"
+                    value={editingSession.end_time ? new Date(editingSession.end_time).toTimeString().slice(0, 5) : ''}
+                    onChange={(e) => {
+                      const [hours, minutes] = e.target.value.split(':')
+                      const newEnd = new Date(editingSession.end_time)
+                      newEnd.setHours(parseInt(hours), parseInt(minutes))
+                      const newDuration = Math.round((newEnd.getTime() - new Date(editingSession.start_time).getTime()) / (1000 * 60))
+                      setEditingSession({...editingSession, end_time: newEnd.toISOString(), duration: newDuration})
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Duration: {Math.floor(editingSession.duration / 60)}h {editingSession.duration % 60}m</label>
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  className="save-btn"
+                  onClick={() => updateSession(editingSession.id, {
+                    project: editingSession.project,
+                    role: editingSession.role,
+                    start_time: editingSession.start_time,
+                    end_time: editingSession.end_time,
+                    duration: editingSession.duration
+                  })}
+                >
+                  Save Changes
+                </button>
+                <button
+                  className="cancel-btn"
+                  onClick={() => setShowEditModal(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className={`toast ${toast.type}`}>
+          {toast.type === 'success' && <CheckCircle size={20} />}
+          {toast.type === 'error' && <XCircle size={20} />}
+          {toast.type === 'warning' && <AlertCircle size={20} />}
+          <span>{toast.message}</span>
+        </div>
+      )}
     </div>
   )
 }

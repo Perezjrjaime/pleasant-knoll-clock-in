@@ -885,11 +885,25 @@ body {
   margin-bottom: 1rem;
 }
 
+.summary-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 .todays-summary h4 {
   color: #000000;
   margin: 0;
   font-size: 1.2rem;
   font-weight: 700;
+}
+
+.summary-subtitle {
+  color: #22c55e;
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  opacity: 0.9;
 }
 
 .clear-sessions-btn {
@@ -1242,6 +1256,159 @@ body {
   border: 2px solid #000000;
 }
 
+/* Day Sessions List - Individual sessions under each day */
+.day-sessions-list {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.day-session-card {
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.day-session-card.status-draft {
+  border-color: #fbbf24;
+  background: #fffbeb;
+}
+
+.day-session-card.status-submitted {
+  border-color: #60a5fa;
+  background: #eff6ff;
+}
+
+.day-session-card.status-approved {
+  border-color: #22c55e;
+  background: #f0fdf4;
+}
+
+.day-session-card.status-rejected {
+  border-color: #ef4444;
+  background: #fef2f2;
+}
+
+.session-time-range {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.session-project-role {
+  font-size: 0.9rem;
+  color: #000000;
+  margin-bottom: 0.5rem;
+}
+
+.session-project-role strong {
+  font-weight: 700;
+}
+
+.session-duration-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.session-duration {
+  font-size: 0.85rem;
+  color: #22c55e;
+  font-weight: 700;
+}
+
+.session-status-badge {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.session-status-badge.draft {
+  background: #fbbf24;
+  color: #000;
+}
+
+.session-status-badge.submitted {
+  background: #60a5fa;
+  color: #000;
+}
+
+.session-status-badge.approved {
+  background: #22c55e;
+  color: #000;
+}
+
+.session-status-badge.rejected {
+  background: #ef4444;
+  color: #fff;
+}
+
+.session-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.edit-session-btn,
+.delete-session-btn {
+  flex: 1;
+  padding: 0.4rem 0.75rem;
+  border: 2px solid #000;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  transition: all 0.2s ease;
+}
+
+.edit-session-btn {
+  background: #ffffff;
+  color: #000;
+}
+
+.edit-session-btn:hover {
+  background: #f3f4f6;
+}
+
+.delete-session-btn {
+  background: #ffffff;
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
+.delete-session-btn:hover {
+  background: #fef2f2;
+}
+
+.session-admin-notes {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #fff;
+  border-left: 3px solid #ef4444;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #991b1b;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.session-admin-notes strong {
+  font-weight: 700;
+}
+
 /* Current Status Card */
 .current-status-card {
   margin-bottom: 2rem;
@@ -1386,6 +1553,148 @@ body {
   font-weight: 600;
   font-size: 0.8rem;
   text-align: right;
+}
+
+/* Timesheet Submission */
+.timesheet-submission {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: #ffffff;
+  border: 2px solid #000000;
+  border-radius: 15px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.status-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.status-badge {
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 2px solid;
+}
+
+.status-badge.draft {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #f59e0b;
+}
+
+.status-badge.submitted {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #3b82f6;
+}
+
+.status-badge.approved {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #22c55e;
+}
+
+.status-badge.rejected {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #ef4444;
+}
+
+.submission-form {
+  margin-top: 1rem;
+}
+
+.submission-instructions {
+  color: #000000;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.initials-input-group {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.initials-input-group label {
+  color: #000000;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.initials-input {
+  padding: 0.75rem 1rem;
+  border: 2px solid #000000;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  width: 100px;
+  text-align: center;
+  text-transform: uppercase;
+  background: #ffffff;
+}
+
+.initials-input:focus {
+  outline: none;
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+}
+
+.initials-input:disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+}
+
+.submit-timesheet-btn {
+  padding: 0.75rem 2rem;
+  background: #22c55e;
+  color: black;
+  border: 2px solid #000000;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.submit-timesheet-btn:hover:not(:disabled) {
+  background: #16a34a;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3);
+}
+
+.submit-timesheet-btn:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.submission-complete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  background: #dcfce7;
+  border: 2px solid #22c55e;
+  border-radius: 10px;
+  color: #166534;
+}
+
+.submission-complete svg {
+  color: #22c55e;
+}
+
+.submission-complete p {
+  margin: 0;
+  font-weight: 600;
 }
 
 /* Empty State */
@@ -2436,4 +2745,564 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* Timesheet Management Styles */
+.timesheets-section {
+  margin-bottom: 2rem;
+}
+
+.timesheet-filters {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.timesheets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.timesheet-card {
+  background: #ffffff;
+  border: 2px solid #000000;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.timesheet-card.submitted {
+  border-color: #3b82f6;
+}
+
+.timesheet-card.approved {
+  border-color: #22c55e;
+}
+
+.timesheet-card.rejected {
+  border-color: #ef4444;
+}
+
+.timesheet-header {
+  padding: 1.5rem;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  transition: background 0.2s;
+}
+
+.timesheet-header:hover {
+  background: #f9fafb;
+}
+
+.timesheet-user {
+  flex: 1;
+}
+
+.timesheet-name {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #000000;
+  margin-bottom: 0.25rem;
+}
+
+.timesheet-initials {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.timesheet-details {
+  flex: 1;
+  text-align: right;
+}
+
+.timesheet-hours {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #22c55e;
+}
+
+.timesheet-week,
+.timesheet-submitted {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.timesheet-status-badge {
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  border: 2px solid;
+}
+
+.timesheet-status-badge.submitted {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #3b82f6;
+}
+
+.timesheet-status-badge.approved {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #22c55e;
+}
+
+.timesheet-status-badge.rejected {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #ef4444;
+}
+
+.timesheet-status-badge.draft {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #f59e0b;
+}
+
+.timesheet-expanded {
+  padding: 1.5rem;
+  border-top: 2px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.timesheet-expanded h4 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #000000;
+}
+
+.sessions-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.session-detail-item {
+  background: #ffffff;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.session-detail-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.session-detail-field {
+  flex: 1;
+  font-size: 0.9rem;
+  color: #000000;
+}
+
+.session-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.edit-session-btn,
+.delete-session-btn {
+  padding: 0.5rem 1rem;
+  border: 2px solid;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+}
+
+.edit-session-btn {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #3b82f6;
+}
+
+.edit-session-btn:hover {
+  background: #3b82f6;
+  color: white;
+}
+
+.delete-session-btn {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #ef4444;
+}
+
+.delete-session-btn:hover {
+  background: #ef4444;
+  color: white;
+}
+
+.admin-actions {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 2px solid #e5e7eb;
+}
+
+.admin-notes-input {
+  margin-bottom: 1rem;
+}
+
+.admin-notes-input label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #000000;
+}
+
+.admin-notes-input textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  resize: vertical;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+}
+
+.approve-timesheet-btn,
+.reject-timesheet-btn {
+  flex: 1;
+  padding: 0.75rem 1.5rem;
+  border: 2px solid;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.3s;
+}
+
+.approve-timesheet-btn {
+  background: #22c55e;
+  color: black;
+  border-color: #000000;
+}
+
+.approve-timesheet-btn:hover:not(:disabled) {
+  background: #16a34a;
+  transform: translateY(-2px);
+}
+
+.approve-timesheet-btn:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+}
+
+.reject-timesheet-btn {
+  background: #ef4444;
+  color: white;
+  border-color: #000000;
+}
+
+.reject-timesheet-btn:hover:not(:disabled) {
+  background: #dc2626;
+  transform: translateY(-2px);
+}
+
+.reject-timesheet-btn:disabled {
+  background: #d1d5db;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.admin-notes-display {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #fef3c7;
+  border: 2px solid #f59e0b;
+  border-radius: 8px;
+}
+
+.admin-notes-display strong {
+  color: #92400e;
+}
+
+.admin-notes-display p {
+  margin: 0.5rem 0 0 0;
+  color: #000000;
+}
+
+.empty-timesheets {
+  text-align: center;
+  padding: 3rem;
+  color: #666;
+}
+
+/* Draft Sessions List */
+.draft-sessions-list,
+.rejected-sessions-list {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.draft-sessions-list h4,
+.rejected-sessions-list h4 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #000000;
+}
+
+.editable-session-card,
+.rejected-session-card {
+  background: #ffffff;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.rejected-session-card {
+  border-color: #ef4444;
+}
+
+.session-info {
+  flex: 1;
+}
+
+.session-date {
+  font-weight: 600;
+  color: #000000;
+  margin-bottom: 0.5rem;
+}
+
+.session-details {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: #666;
+  flex-wrap: wrap;
+}
+
+.session-edit-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.edit-btn,
+.delete-btn {
+  padding: 0.5rem 1rem;
+  border: 2px solid;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+}
+
+.edit-btn {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #3b82f6;
+}
+
+.edit-btn:hover {
+  background: #3b82f6;
+  color: white;
+}
+
+.delete-btn {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #ef4444;
+}
+
+.delete-btn:hover {
+  background: #ef4444;
+  color: white;
+}
+
+.rejection-note {
+  color: #991b1b;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.admin-rejection-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: #fee2e2;
+  border-radius: 6px;
+  color: #991b1b;
+  font-size: 0.9rem;
+}
+
+/* Edit Session Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-content {
+  background: #ffffff;
+  border: 3px solid #000000;
+  border-radius: 15px;
+  padding: 2rem;
+  max-width: 500px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.modal-content h3 {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  color: #000000;
+}
+
+.edit-session-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-group label {
+  font-weight: 600;
+  color: #000000;
+}
+
+.form-group select,
+.form-group input {
+  padding: 0.75rem;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.save-btn,
+.cancel-btn {
+  flex: 1;
+  padding: 0.75rem 1.5rem;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.save-btn {
+  background: #22c55e;
+  color: black;
+}
+
+.save-btn:hover {
+  background: #16a34a;
+  transform: translateY(-2px);
+}
+
+.cancel-btn {
+  background: #e5e7eb;
+  color: #000000;
+}
+
+.cancel-btn:hover {
+  background: #d1d5db;
+}
+
+/* Toast Notification */
+.toast {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  padding: 1rem 1.5rem;
+  background: #ffffff;
+  border: 2px solid;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  animation: slideIn 0.3s ease;
+  z-index: 2000;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toast.success {
+  border-color: #22c55e;
+  color: #166534;
+  background: #dcfce7;
+}
+
+.toast.error {
+  border-color: #ef4444;
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.toast.warning {
+  border-color: #f59e0b;
+  color: #92400e;
+  background: #fef3c7;
+}
+
 
