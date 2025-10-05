@@ -28,16 +28,14 @@ function App() {
   
   // Common landscaping roles
   const commonRoles = [
-    'General Labor',
-    'Excavator Operator',
-    'Hydro Mulch Machine Operator',
-    'Skid Steer Operator',
-    'Truck Driver',
-    'Crew Leader',
-    'Irrigation Tech',
-    'Tree Care Specialist',
-    'Hardscape Installer',
-    'Landscape Foreman'
+    'Skid steer',
+    'Truck',
+    'Labor',
+    'Tractor',
+    'Straw blower',
+    'Hydromulcher',
+    'Mini skid steer',
+    'Mini excavator'
   ]
   
   // Base locations (always available)
@@ -90,12 +88,13 @@ function App() {
       setSession(session)
       setUser(session?.user ?? null)
       
-      // Load user role if logged in
-      if (session?.user) {
-        await loadUserRole(session.user.id, session.user.email!)
-      }
-      
+      // Set loading false FIRST, then load role in background
       setLoading(false)
+      
+      // Load user role if logged in (don't await - let it run async)
+      if (session?.user) {
+        loadUserRole(session.user.id, session.user.email!)
+      }
     })
 
     // Listen for auth changes
@@ -103,9 +102,9 @@ function App() {
       setSession(session)
       setUser(session?.user ?? null)
       
-      // Load user role if logged in
+      // Load user role if logged in (don't await - let it run async)
       if (session?.user) {
-        await loadUserRole(session.user.id, session.user.email!)
+        loadUserRole(session.user.id, session.user.email!)
       } else {
         setUserRole(null)
       }
@@ -118,36 +117,44 @@ function App() {
     }
   }, [])
 
-  // Load user role from database
+  // Load user role from database - WITH TIMEOUT
   const loadUserRole = async (userId: string, email: string) => {
     try {
       console.log('Loading user role for:', email)
       
-      // WORKAROUND: Supabase queries hang in auth flow, so use fetch API directly
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/user_roles?user_id=eq.${userId}&select=*`,
-        {
-          headers: {
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-        }
-      )
+      // Add a timeout promise
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Query timeout')), 3000)
+      })
       
-      const data = await response.json()
-      console.log('Fetch API response:', data)
+      // Race the query against the timeout
+      const queryPromise = supabase
+        .from('user_roles')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle()
       
-      if (data && data.length > 0) {
-        const role = data[0]
-        console.log('Setting role from fetch:', role.role)
-        setUserRole(role.role)
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any
+      
+      console.log('Supabase client response:', { data, error })
+      
+      if (error) {
+        console.error('Error loading user role:', error)
+        setUserRole('user')
+        return
+      }
+      
+      if (data) {
+        console.log('Setting role:', data.role)
+        setUserRole(data.role)
       } else {
         // No role exists - default to user (unapproved)
         console.log('No role found, defaulting to user')
         setUserRole('user')
       }
     } catch (error) {
-      console.error('Error loading user role:', error)
+      console.error('Error loading user role (caught):', error)
+      // If it times out or errors, just set to user and continue
       setUserRole('user')
     }
   }
