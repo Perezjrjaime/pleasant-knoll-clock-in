@@ -1927,8 +1927,9 @@ body {
 
 .user-card {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
+  gap: 1rem;
   padding: 1rem;
   background: #f8f9fa;
   border: 1px solid #dee2e6;
@@ -1941,14 +1942,18 @@ body {
   box-shadow: 0 2px 8px rgba(167, 209, 92, 0.2);
 }
 
-.user-info {
-  flex: 1;
+.user-details-admin {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .user-name {
   font-weight: 600;
   color: #000000;
-  margin-bottom: 0.25rem;
 }
 
 .user-email {
@@ -1956,8 +1961,9 @@ body {
   color: #666666;
 }
 
-.user-role-selector {
-  margin-left: 1rem;
+.user-meta {
+  font-size: 0.75rem;
+  color: #999999;
 }
 
 .role-dropdown {

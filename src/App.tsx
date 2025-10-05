@@ -1304,7 +1304,7 @@ function App() {
                 <div className="users-list">
                   {[...adminUsers, ...approvedUsers].map((userItem) => (
                     <div key={userItem.id} className="user-card">
-                      <div className="user-info">
+                      <div className="user-details-admin">
                         <div className="user-name">{userItem.full_name}</div>
                         <div className="user-email">{userItem.email}</div>
                         {userItem.approved_at && (
