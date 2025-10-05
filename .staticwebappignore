@@ -1,0 +1,23 @@
+# Ignore node_modules
+node_modules/
+
+# Ignore development files
+*.sql
+*.md
+
+# Ignore source files (we only need the built dist folder)
+src/
+public/
+.git/
+.github/
+
+# Ignore config files
+tsconfig*.json
+vite.config.ts
+eslint.config.js
+package.json
+package-lock.json
+
+# Ignore other build artifacts
+.vscode/
+.idea/

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield, UserCheck, UserX } from 'lucide-react'
 import { supabase, type Project, type UserRole, supabaseOperations } from './lib/supabase'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
@@ -1448,7 +1448,7 @@ function App() {
                     
                     // Use day.sessions which already has the sessions for this day
                     // Filter to only show sessions with duration (completed sessions)
-                    const daySessions = day.sessions.filter(s => s.duration && s.endTime)
+                    const daySessions = day.sessions.filter(s => s.duration !== undefined && s.endTime !== undefined)
                     
                     return (
                       <div key={day.name} className={`weekly-day-item ${day.isToday ? 'today' : ''} ${day.sessions.length === 0 ? 'empty-day' : ''}`}>
@@ -1468,13 +1468,13 @@ function App() {
                             {daySessions.map((session) => (
                               <div key={session.id} className={`day-session-card status-${session.status}`}>
                                 <div className="session-time-range">
-                                  {session.startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {session.endTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                  {session.startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {session.endTime?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                 </div>
                                 <div className="session-project-role">
                                   <strong>{session.project}</strong> • {session.role}
                                 </div>
                                 <div className="session-duration-status">
-                                  <span className="session-duration">{Math.floor(session.duration / 60)}h {session.duration % 60}m</span>
+                                  <span className="session-duration">{Math.floor((session.duration || 0) / 60)}h {(session.duration || 0) % 60}m</span>
                                   <span className={`session-status-badge ${session.status}`}>
                                     {session.status === 'draft' ? '✏️ Draft' : 
                                      session.status === 'submitted' ? '⏳ Submitted' : 
