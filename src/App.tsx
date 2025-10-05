@@ -92,7 +92,7 @@ function App() {
       
       // Load user role if logged in
       if (session?.user) {
-        await loadUserRole(session.user.id, session.user.email!, session.user.user_metadata?.full_name)
+        await loadUserRole(session.user.id, session.user.email!)
       }
       
       setLoading(false)
@@ -105,7 +105,7 @@ function App() {
       
       // Load user role if logged in
       if (session?.user) {
-        await loadUserRole(session.user.id, session.user.email!, session.user.user_metadata?.full_name)
+        await loadUserRole(session.user.id, session.user.email!)
       } else {
         setUserRole(null)
       }
@@ -119,7 +119,7 @@ function App() {
   }, [])
 
   // Load user role from database
-  const loadUserRole = async (userId: string, email: string, fullName?: string) => {
+  const loadUserRole = async (userId: string, email: string) => {
     try {
       console.log('Loading user role for:', email)
       
