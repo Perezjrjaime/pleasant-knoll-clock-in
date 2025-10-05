@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield } from 'lucide-react'
+import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield, UserCheck, UserX } from 'lucide-react'
 import { supabase, type Project, type UserRole, supabaseOperations } from './lib/supabase'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
+import AccessDenied from './components/AccessDenied'
 import './App.css'
 
 type TabType = 'clock' | 'projects' | 'hours' | 'history' | 'admin'
@@ -71,7 +72,7 @@ function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [loading, setLoading] = useState(true)
-  const [userRole, setUserRole] = useState<'admin' | 'employee' | null>(null)
+  const [userRole, setUserRole] = useState<'user' | 'approved' | 'admin' | null>(null)
   const [allUsers, setAllUsers] = useState<UserRole[]>([])
 
   // Toast notification function
@@ -112,29 +113,42 @@ function App() {
       setLoading(false)
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
   // Load user role from database
   const loadUserRole = async (userId: string, email: string, fullName?: string) => {
     try {
-      // Check if user role exists
-      let role = await supabaseOperations.getUserRole(userId)
+      console.log('Loading user role for:', email)
       
-      // If no role exists, create one with default 'employee' role
-      if (!role) {
-        role = await supabaseOperations.createUserRole({
-          user_id: userId,
-          email: email,
-          full_name: fullName || email,
-          role: 'employee'
-        })
+      // WORKAROUND: Supabase queries hang in auth flow, so use fetch API directly
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/user_roles?user_id=eq.${userId}&select=*`,
+        {
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+        }
+      )
+      
+      const data = await response.json()
+      console.log('Fetch API response:', data)
+      
+      if (data && data.length > 0) {
+        const role = data[0]
+        console.log('Setting role from fetch:', role.role)
+        setUserRole(role.role)
+      } else {
+        // No role exists - default to user (unapproved)
+        console.log('No role found, defaulting to user')
+        setUserRole('user')
       }
-      
-      setUserRole(role.role)
     } catch (error) {
       console.error('Error loading user role:', error)
-      showToast('Error loading user permissions', 'error')
+      setUserRole('user')
     }
   }
 
@@ -1214,66 +1228,155 @@ function App() {
           return (
             <div className="tab-content">
               <div className="admin-container">
-                <h2>Access Denied</h2>
-                <p>You do not have permission to access this page.</p>
+                <div className="access-denied-message">
+                  <AlertCircle size={48} color="#f59e0b" />
+                  <h2>Access Denied</h2>
+                  <p>You do not have permission to access this page.</p>
+                </div>
               </div>
             </div>
           )
         }
+
+        // Separate users by role
+        const pendingUsers = allUsers.filter(u => u.role === 'user')
+        const approvedUsers = allUsers.filter(u => u.role === 'approved')
+        const adminUsers = allUsers.filter(u => u.role === 'admin')
 
         return (
           <div className="tab-content">
             <div className="admin-container">
               <h2>Admin Panel</h2>
               
-              {/* User Management */}
+              {/* Pending Approvals Section */}
+              {pendingUsers.length > 0 && (
+                <div className="admin-section pending-section">
+                  <h3>
+                    <AlertCircle size={20} style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} />
+                    Pending Approvals ({pendingUsers.length})
+                  </h3>
+                  <div className="users-list">
+                    {pendingUsers.map((userItem) => (
+                      <div key={userItem.id} className="user-card pending-user">
+                        <div className="user-info">
+                          <div className="user-name">{userItem.full_name}</div>
+                          <div className="user-email">{userItem.email}</div>
+                          <div className="user-meta">
+                            Signed up: {new Date(userItem.created_at!).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <div className="user-actions">
+                          <button
+                            className="approve-btn"
+                            onClick={async () => {
+                              try {
+                                await supabaseOperations.updateUserRole(userItem.user_id, 'approved')
+                                showToast(`Approved ${userItem.full_name}`, 'success')
+                                await loadAllUsers()
+                              } catch (error) {
+                                console.error('Error approving user:', error)
+                                showToast('Failed to approve user', 'error')
+                              }
+                            }}
+                          >
+                            <UserCheck size={16} />
+                            Approve
+                          </button>
+                          <button
+                            className="deny-btn"
+                            onClick={() => {
+                              showToast('User remains unapproved', 'warning')
+                            }}
+                          >
+                            <UserX size={16} />
+                            Deny
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Approved Users Section */}
               <div className="admin-section">
-                <h3>User Management</h3>
+                <h3>Approved Users ({approvedUsers.length + adminUsers.length})</h3>
                 <div className="users-list">
-                  {allUsers.map((userItem) => (
+                  {[...adminUsers, ...approvedUsers].map((userItem) => (
                     <div key={userItem.id} className="user-card">
                       <div className="user-info">
                         <div className="user-name">{userItem.full_name}</div>
                         <div className="user-email">{userItem.email}</div>
+                        {userItem.approved_at && (
+                          <div className="user-meta">
+                            Approved: {new Date(userItem.approved_at).toLocaleDateString()}
+                          </div>
+                        )}
                       </div>
                       <div className="user-role-selector">
                         <select
                           value={userItem.role}
                           onChange={async (e) => {
-                            const newRole = e.target.value as 'admin' | 'employee'
+                            const newRole = e.target.value as 'user' | 'approved' | 'admin'
+                            
+                            // Prevent demoting yourself
+                            if (userItem.user_id === user?.id && newRole !== 'admin') {
+                              showToast('You cannot demote yourself!', 'error')
+                              return
+                            }
+                            
                             try {
                               await supabaseOperations.updateUserRole(userItem.user_id, newRole)
-                              showToast(`Updated ${userItem.full_name}'s role to ${newRole}`, 'success')
-                              await loadAllUsers() // Refresh the list
+                              const roleLabels = {
+                                user: 'Unapproved',
+                                approved: 'Approved',
+                                admin: 'Admin'
+                              }
+                              showToast(`Updated ${userItem.full_name}'s role to ${roleLabels[newRole]}`, 'success')
+                              await loadAllUsers()
                             } catch (error) {
                               console.error('Error updating role:', error)
                               showToast('Failed to update role', 'error')
                             }
                           }}
-                          className="role-dropdown"
+                          className={`role-dropdown role-${userItem.role}`}
                         >
-                          <option value="employee">Employee</option>
+                          <option value="user">Unapproved</option>
+                          <option value="approved">Approved</option>
                           <option value="admin">Admin</option>
                         </select>
                       </div>
                     </div>
                   ))}
-                  {allUsers.length === 0 && (
+                  {approvedUsers.length === 0 && adminUsers.length === 0 && (
                     <div className="no-users">
-                      <p>No users found. Users will appear here after they sign in for the first time.</p>
+                      <p>No approved users yet.</p>
                     </div>
                   )}
                 </div>
               </div>
               
-              {/* Future admin features */}
+              {/* Stats Section */}
               <div className="admin-section">
-                <h3>Coming Soon</h3>
-                <ul className="feature-list">
-                  <li>✓ Timecard Approval System</li>
-                  <li>✓ Employee Reports</li>
-                  <li>✓ Project Analytics</li>
-                </ul>
+                <h3>System Statistics</h3>
+                <div className="stats-grid">
+                  <div className="stat-card">
+                    <div className="stat-number">{allUsers.length}</div>
+                    <div className="stat-label">Total Users</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-number">{pendingUsers.length}</div>
+                    <div className="stat-label">Pending Approval</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-number">{approvedUsers.length}</div>
+                    <div className="stat-label">Approved Users</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-number">{adminUsers.length}</div>
+                    <div className="stat-label">Admins</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1335,6 +1438,11 @@ function App() {
         </div>
       </div>
     )
+  }
+
+  // Show Access Denied screen for unapproved users
+  if (session && user && userRole === 'user') {
+    return <AccessDenied user={user} onSignOut={handleSignOut} />
   }
 
   return (

@@ -1980,6 +1980,140 @@ body {
   border-color: #a7d15c;
 }
 
+/* Role-specific dropdown colors */
+.role-dropdown.role-admin {
+  background: #d1ecf1;
+  border-color: #17a2b8;
+  color: #004085;
+}
+
+.role-dropdown.role-approved {
+  background: #d4edda;
+  border-color: #28a745;
+  color: #155724;
+}
+
+.role-dropdown.role-user {
+  background: #fff3cd;
+  border-color: #ffc107;
+  color: #856404;
+}
+
+.pending-section {
+  border-color: #ffc107;
+  background: #fffbf0;
+}
+
+.pending-user {
+  background: #fff;
+  border: 2px solid #ffc107;
+}
+
+.user-meta {
+  font-size: 0.75rem;
+  color: #666666;
+  margin-top: 0.25rem;
+}
+
+.user-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: 1rem;
+}
+
+.approve-btn,
+.deny-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  border: 2px solid;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.approve-btn {
+  background: #28a745;
+  border-color: #28a745;
+  color: white;
+}
+
+.approve-btn:hover {
+  background: #218838;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+.deny-btn {
+  background: white;
+  border-color: #dc3545;
+  color: #dc3545;
+}
+
+.deny-btn:hover {
+  background: #dc3545;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+.stat-card {
+  background: #f8f9fa;
+  border: 2px solid #dee2e6;
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+  border-color: #a7d15c;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(167, 209, 92, 0.2);
+}
+
+.stat-number {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #000000;
+  margin-bottom: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.875rem;
+  color: #666666;
+  font-weight: 500;
+}
+
+.access-denied-message {
+  text-align: center;
+  padding: 3rem 2rem;
+}
+
+.access-denied-message svg {
+  margin: 0 auto 1rem;
+}
+
+.access-denied-message h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.access-denied-message p {
+  color: #666666;
+  margin: 0;
+}
+
 .no-users {
   text-align: center;
   padding: 2rem;
@@ -1998,6 +2132,180 @@ body {
   background: #f8f9fa;
   border-radius: 8px;
   font-weight: 500;
+}
+
+/* Access Denied Screen Styles */
+.access-denied-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.access-denied-card {
+  background: white;
+  border: 3px solid #000000;
+  border-radius: 20px;
+  padding: 3rem;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.access-denied-icon {
+  margin-bottom: 1.5rem;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.8;
+  }
+}
+
+.access-denied-card h1 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #000000;
+}
+
+.access-denied-message {
+  margin-bottom: 2rem;
+}
+
+.message-primary {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #000000;
+  margin: 0 0 0.75rem 0;
+}
+
+.message-secondary {
+  font-size: 0.95rem;
+  color: #666666;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.user-info-box {
+  background: #f8f9fa;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  text-align: left;
+}
+
+.user-info-box h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #000000;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.info-label {
+  font-weight: 600;
+  color: #495057;
+  font-size: 0.9rem;
+}
+
+.info-value {
+  color: #000000;
+  font-size: 0.9rem;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-pending {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffc107;
+}
+
+.status-approved {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #28a745;
+}
+
+.status-admin {
+  background: #d1ecf1;
+  color: #004085;
+  border: 1px solid #17a2b8;
+}
+
+.access-denied-actions {
+  margin-bottom: 1.5rem;
+}
+
+.sign-out-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.75rem;
+  background: #000000;
+  color: white;
+  border: 2px solid #000000;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sign-out-btn:hover {
+  background: white;
+  color: #000000;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.sign-out-btn:active {
+  transform: translateY(0);
+}
+
+.help-text {
+  padding-top: 1.5rem;
+  border-top: 1px solid #dee2e6;
+}
+
+.help-text p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #666666;
+  font-style: italic;
 }
 
 /* Mobile Auth Responsive */
@@ -2059,6 +2367,33 @@ body {
     width: 80px;
     height: 80px;
   }
+  
+  .access-denied-container {
+    padding: 1rem;
+  }
+  
+  .access-denied-card {
+    padding: 2rem;
+  }
+  
+  .access-denied-icon {
+    transform: scale(0.8);
+  }
+  
+  .user-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .approve-btn,
+  .deny-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 480px) {
@@ -2078,4 +2413,21 @@ body {
   .auth-header h2 {
     font-size: 1rem;
   }
+  
+  .access-denied-card {
+    padding: 1.5rem;
+  }
+  
+  .access-denied-card h1 {
+    font-size: 1.4rem;
+  }
+  
+  .message-primary {
+    font-size: 1rem;
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
 }
+

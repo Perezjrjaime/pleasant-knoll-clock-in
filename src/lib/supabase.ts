@@ -37,7 +37,9 @@ export interface UserRole {
   user_id: string
   email: string
   full_name: string
-  role: 'admin' | 'employee'
+  role: 'user' | 'approved' | 'admin'
+  approved_at?: string
+  approved_by?: string
   created_at?: string
   updated_at?: string
 }
@@ -171,14 +173,48 @@ export const supabaseOperations = {
 
   // User Roles
   async getUserRole(userId: string) {
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
+    console.log('getUserRole START - userId:', userId)
     
-    if (error && error.code !== 'PGRST116') throw error // PGRST116 = no rows returned
-    return data
+    try {
+      console.log('About to query user_roles table...')
+      
+      // Try with a shorter timeout using AbortController
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 3000)
+      
+      const result = await supabase
+        .from('user_roles')
+        .select('*')
+        .eq('user_id', userId)
+        .abortSignal(controller.signal)
+        .maybeSingle()
+      
+      clearTimeout(timeoutId)
+      console.log('Query completed! Result:', result)
+      
+      const { data, error } = result
+      
+      if (error) {
+        console.error('getUserRole error:', error)
+        // Don't throw on abort - just return null
+        if (error.message?.includes('aborted')) {
+          console.warn('Query timed out after 3s')
+          return null
+        }
+        throw error
+      }
+      
+      console.log('Returning data:', data)
+      return data
+    } catch (err: any) {
+      console.error('getUserRole exception:', err)
+      // Return null on timeout instead of throwing
+      if (err.name === 'AbortError' || err.message?.includes('aborted')) {
+        console.warn('Query was aborted')
+        return null
+      }
+      throw err
+    }
   },
 
   async createUserRole(userRole: Omit<UserRole, 'id' | 'created_at' | 'updated_at'>) {
@@ -191,10 +227,15 @@ export const supabaseOperations = {
     return data[0]
   },
 
-  async updateUserRole(userId: string, role: 'admin' | 'employee') {
+  async updateUserRole(userId: string, role: 'user' | 'approved' | 'admin') {
+    const approvedAt = (role === 'approved' || role === 'admin') ? new Date().toISOString() : null
     const { data, error } = await supabase
       .from('user_roles')
-      .update({ role, updated_at: new Date().toISOString() })
+      .update({ 
+        role, 
+        updated_at: new Date().toISOString(),
+        ...(approvedAt && { approved_at: approvedAt })
+      })
       .eq('user_id', userId)
       .select()
     
