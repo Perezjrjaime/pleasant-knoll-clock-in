@@ -8,7 +8,12 @@ import './App.css'
 type TabType = 'clock' | 'projects' | 'hours' | 'history' | 'admin'
 
 function App() {
-  const [activeTab, setActiveTab] = useState<TabType>('clock')
+  // Initialize activeTab from localStorage, or default to 'clock'
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    const savedTab = localStorage.getItem('activeTab')
+    return (savedTab as TabType) || 'clock'
+  })
+  
   const [selectedProject, setSelectedProject] = useState('The Shop')
   const [selectedRole, setSelectedRole] = useState('')
   const [currentLocation, setCurrentLocation] = useState<string | null>(null)
@@ -211,6 +216,11 @@ function App() {
       setActiveTab('admin')
     }
   }, [userRole])
+
+  // Save active tab to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('activeTab', activeTab)
+  }, [activeTab])
 
   // Load all users when admin tab is accessed
   useEffect(() => {
@@ -1614,89 +1624,49 @@ function App() {
           </div>
         )
       case 'history':
-        // Filter data based on selected time range
-        const getFilteredSessions = () => {
-          const now = new Date()
-          const allSessions = [...todaysSessions.filter(s => s.duration)]
-          
-          switch (historyFilter) {
-            case 'this-week':
-              const weekStart = new Date(now)
-              weekStart.setDate(now.getDate() - now.getDay())
-              weekStart.setHours(0, 0, 0, 0)
-              return allSessions.filter(s => new Date(s.startTime) >= weekStart)
-              
-            case 'last-week':
-              const lastWeekStart = new Date(now)
-              lastWeekStart.setDate(now.getDate() - now.getDay() - 7)
-              lastWeekStart.setHours(0, 0, 0, 0)
-              const lastWeekEnd = new Date(lastWeekStart)
-              lastWeekEnd.setDate(lastWeekStart.getDate() + 6)
-              lastWeekEnd.setHours(23, 59, 59, 999)
-              return allSessions.filter(s => {
-                const sessionDate = new Date(s.startTime)
-                return sessionDate >= lastWeekStart && sessionDate <= lastWeekEnd
-              })
-              
-            case 'this-month':
-              const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-              return allSessions.filter(s => new Date(s.startTime) >= monthStart)
-              
-            case 'last-month':
-              const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-              const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0)
-              lastMonthEnd.setHours(23, 59, 59, 999)
-              return allSessions.filter(s => {
-                const sessionDate = new Date(s.startTime)
-                return sessionDate >= lastMonthStart && sessionDate <= lastMonthEnd
-              })
-              
-            case 'all-time':
-            default:
-              return allSessions
-          }
+        // Admin-only History tab - Project breakdown view
+        if (userRole !== 'admin') {
+          return null // History tab is admin-only
         }
+
+        // Load historical sessions from database (will implement loading function)
+        // For now, using empty array - will add data loading
+        const historicalSessions: any[] = []
         
-        const filteredSessions = getFilteredSessions()
-        const totalFilteredMinutes = filteredSessions.reduce((total, session) => total + (session.duration || 0), 0)
-        const totalFilteredHours = Math.floor(totalFilteredMinutes / 60)
-        const filteredRemainingMinutes = totalFilteredMinutes % 60
-        
-        // Group by date for chronological display
-        const sessionsByDate = filteredSessions.reduce((groups, session) => {
-          const dateKey = session.startTime.toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-          })
-          if (!groups[dateKey]) {
-            groups[dateKey] = {
-              date: session.startTime,
-              sessions: [],
-              totalMinutes: 0
+        // Group by project
+        const projectBreakdowns = historicalSessions.reduce((acc: any, session: any) => {
+          const projectName = session.project
+          if (!acc[projectName]) {
+            acc[projectName] = {
+              projectName,
+              totalMinutes: 0,
+              sessionCount: 0,
+              employees: {} as Record<string, number>, // employee name -> minutes
+              equipment: {} as Record<string, number>  // role/equipment -> minutes
             }
           }
-          groups[dateKey].sessions.push(session)
-          groups[dateKey].totalMinutes += session.duration || 0
-          return groups
-        }, {} as Record<string, any>)
-        
-        const getFilterLabel = () => {
-          switch (historyFilter) {
-            case 'this-week': return 'This Week'
-            case 'last-week': return 'Last Week'
-            case 'this-month': return 'This Month'
-            case 'last-month': return 'Last Month'
-            case 'all-time': return 'All Time'
-            default: return 'This Week'
-          }
-        }
+          
+          acc[projectName].totalMinutes += session.duration || 0
+          acc[projectName].sessionCount += 1
+          
+          // Track employee hours
+          const employeeName = session.userName || 'Unknown'
+          acc[projectName].employees[employeeName] = (acc[projectName].employees[employeeName] || 0) + (session.duration || 0)
+          
+          // Track equipment/role hours
+          const equipment = session.role
+          acc[projectName].equipment[equipment] = (acc[projectName].equipment[equipment] || 0) + (session.duration || 0)
+          
+          return acc
+        }, {})
 
         return (
           <div className="tab-content">
             <div className="history-container">
-              <h2>Work History</h2>
+              <h2>Project History</h2>
+              <p style={{textAlign: 'center', color: '#666', marginBottom: '2rem'}}>
+                View completed projects with employee and equipment breakdowns
+              </p>
               
               {/* Time Range Filter */}
               <div className="history-filter">
@@ -1714,71 +1684,74 @@ function App() {
                 </select>
               </div>
               
-              {/* Summary for Selected Period */}
-              <div className="history-summary">
-                <div className="history-summary-card">
-                  <h3>{getFilterLabel()} Summary</h3>
-                  <div className="summary-stats">
-                    <div className="stat-item">
-                      <div className="stat-label">Total Hours</div>
-                      <div className="stat-value">{totalFilteredHours}h {filteredRemainingMinutes}m</div>
-                    </div>
-                    <div className="stat-item">
-                      <div className="stat-label">Work Days</div>
-                      <div className="stat-value">{Object.keys(sessionsByDate).length}</div>
-                    </div>
-                    <div className="stat-item">
-                      <div className="stat-label">Total Sessions</div>
-                      <div className="stat-value">{filteredSessions.length}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Daily Breakdown */}
-              {Object.keys(sessionsByDate).length > 0 ? (
-                <div className="history-breakdown">
-                  <h3>Daily Breakdown</h3>
-                  <div className="history-days">
-                    {Object.entries(sessionsByDate)
-                      .sort(([, a], [, b]) => (b as any).date.getTime() - (a as any).date.getTime())
-                      .map(([dateString, dayData]: [string, any]) => {
-                        const dayHours = Math.floor(dayData.totalMinutes / 60)
-                        const dayMinutes = dayData.totalMinutes % 60
+              {Object.keys(projectBreakdowns).length > 0 ? (
+                <div className="project-history-list">
+                  {Object.values(projectBreakdowns).map((project: any) => {
+                    const totalHours = Math.floor(project.totalMinutes / 60)
+                    const totalMinutes = project.totalMinutes % 60
+                    
+                    return (
+                      <div key={project.projectName} className="project-history-card">
+                        <div className="project-history-header">
+                          <h3>{project.projectName}</h3>
+                          <div className="project-total-hours">
+                            {totalHours}h {totalMinutes}m
+                          </div>
+                        </div>
                         
-                        return (
-                          <div key={dateString} className="history-day">
-                            <div className="history-day-header">
-                              <div className="history-date">{dateString}</div>
-                              <div className="history-day-total">{dayHours}h {dayMinutes}m</div>
-                            </div>
-                            <div className="history-sessions">
-                              {dayData.sessions
-                                .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-                                .map((session: any, idx: number) => (
-                                  <div key={idx} className="history-session">
-                                    <div className="session-time-range">
-                                      {formatTime(new Date(session.startTime))} - {formatTime(new Date(session.endTime!))}
+                        <div className="project-history-meta">
+                          <span className="session-count">{project.sessionCount} sessions</span>
+                        </div>
+                        
+                        <div className="project-history-content">
+                          {/* Employee Breakdown */}
+                          <div className="breakdown-section">
+                            <h4>By Employee:</h4>
+                            <div className="breakdown-items">
+                              {Object.entries(project.employees)
+                                .sort(([, a], [, b]) => (b as number) - (a as number))
+                                .map(([employee, minutes]: [string, any]) => {
+                                  const hours = Math.floor(minutes / 60)
+                                  const mins = minutes % 60
+                                  return (
+                                    <div key={employee} className="breakdown-item-row">
+                                      <span className="breakdown-label">{employee}</span>
+                                      <span className="breakdown-value">{hours}h {mins}m</span>
                                     </div>
-                                    <div className="session-details">
-                                      <div className="session-project-name">{session.project}</div>
-                                      <div className="session-role-name">{session.role}</div>
-                                      <div className="session-duration">{Math.floor((session.duration || 0) / 60)}h {(session.duration || 0) % 60}m</div>
-                                    </div>
-                                  </div>
-                                ))}
+                                  )
+                                })}
                             </div>
                           </div>
-                        )
-                      })}
-                  </div>
+                          
+                          {/* Equipment Breakdown */}
+                          <div className="breakdown-section">
+                            <h4>By Equipment/Role:</h4>
+                            <div className="breakdown-items">
+                              {Object.entries(project.equipment)
+                                .sort(([, a], [, b]) => (b as number) - (a as number))
+                                .map(([equipment, minutes]: [string, any]) => {
+                                  const hours = Math.floor(minutes / 60)
+                                  const mins = minutes % 60
+                                  return (
+                                    <div key={equipment} className="breakdown-item-row">
+                                      <span className="breakdown-label">{equipment}</span>
+                                      <span className="breakdown-value">{hours}h {mins}m</span>
+                                    </div>
+                                  )
+                                })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               ) : (
                 <div className="empty-history">
                   <div className="empty-message">
-                    <h3>No work history found</h3>
-                    <p>No completed sessions found for {getFilterLabel().toLowerCase()}.</p>
-                    <p>Try selecting a different time range or start tracking time on the Clock tab.</p>
+                    <h3>No project history found</h3>
+                    <p>No completed projects found for the selected time range.</p>
+                    <p>Sessions will appear here once employees submit and admins approve timesheets.</p>
                   </div>
                 </div>
               )}
@@ -2225,8 +2198,15 @@ function App() {
       {/* Bottom Navigation */}
       <nav className="bottom-nav">
         {userRole === 'admin' ? (
-          // Admin-only navigation: Projects, History, Admin
+          // Admin-only navigation: Admin, Projects, History
           <>
+            <button 
+              className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
+              onClick={() => setActiveTab('admin')}
+            >
+              <Shield size={24} />
+              <span>Admin</span>
+            </button>
             <button 
               className={`nav-item ${activeTab === 'projects' ? 'active' : ''}`}
               onClick={() => setActiveTab('projects')}
@@ -2240,13 +2220,6 @@ function App() {
             >
               <History size={24} />
               <span>History</span>
-            </button>
-            <button 
-              className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
-              onClick={() => setActiveTab('admin')}
-            >
-              <Shield size={24} />
-              <span>Admin</span>
             </button>
           </>
         ) : (

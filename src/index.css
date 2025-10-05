@@ -1908,6 +1908,131 @@ body {
   font-size: 1rem;
 }
 
+/* Project History View (Admin Only) */
+.project-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.project-history-card {
+  background: #ffffff;
+  border: 3px solid #000000;
+  border-radius: 15px;
+  padding: 1.5rem;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.project-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #22c55e;
+}
+
+.project-history-header h3 {
+  color: #000000;
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.project-total-hours {
+  color: #22c55e;
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.project-history-meta {
+  margin-bottom: 1.25rem;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.session-count {
+  padding: 0.25rem 0.75rem;
+  background: #f3f4f6;
+  border: 1px solid #000;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.project-history-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.breakdown-section {
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.breakdown-section h4 {
+  color: #000000;
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #d1d5db;
+}
+
+.breakdown-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.breakdown-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.breakdown-item-row:hover {
+  background: #f3f4f6;
+  border-color: #22c55e;
+}
+
+.breakdown-label {
+  color: #000000;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.breakdown-value {
+  color: #22c55e;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+/* Responsive adjustments for project history */
+@media (max-width: 768px) {
+  .project-history-content {
+    grid-template-columns: 1fr;
+  }
+  
+  .project-history-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .project-total-hours {
+    font-size: 1.5rem;
+  }
+}
+
+
 /* Toast Notifications */
 .toast {
   position: fixed;
