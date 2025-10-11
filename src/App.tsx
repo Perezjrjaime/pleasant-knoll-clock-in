@@ -137,7 +137,7 @@ function App() {
   // Project tracking state (for live project stats)
   const [selectedProjectForStats, setSelectedProjectForStats] = useState<Project | null>(null)
   const [projectStats, setProjectStats] = useState<any>(null)
-  const [loadingProjectStats, setLoadingProjectStats] = useState(false)
+  // const [loadingProjectStats, setLoadingProjectStats] = useState(false)  // Unused for now
   const [showCompletedProjects, setShowCompletedProjects] = useState(false)
   const [showCompleteConfirmation, setShowCompleteConfirmation] = useState(false)
   const [projectToComplete, setProjectToComplete] = useState<Project | null>(null)
@@ -1327,7 +1327,7 @@ function App() {
   
   // Load statistics for a specific project
   const loadProjectStats = async (project: Project) => {
-    setLoadingProjectStats(true)
+    // setLoadingProjectStats(true)
     setSelectedProjectForStats(project)
     
     try {
@@ -1424,7 +1424,7 @@ function App() {
       console.error('Error calculating project stats:', error)
       showToast('Error calculating project statistics', 'error')
     } finally {
-      setLoadingProjectStats(false)
+      // setLoadingProjectStats(false)
     }
   }
 

@@ -23,15 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 
-# SQL setup files (don't deploy to production)
+# SQL setup files (keep locally, don't commit to git)
 *.sql
 
-# Documentation files (don't deploy to production)
-FINAL_STATUS.md
-SUCCESS_LOG.md
-IMPLEMENTATION_SUMMARY.md
-ROLE_AUTH_SETUP.md
-ROLE_SYSTEM_*.md
-VISUAL_GUIDE.md
-SUPABASE_SETUP.md
-README.md
+# Documentation files (keep locally, don't commit to git)
+*.md
+!README.md
+
