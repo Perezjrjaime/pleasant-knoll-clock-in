@@ -70,7 +70,6 @@ function App() {
   
   // Project management state
   const [showAddProject, setShowAddProject] = useState(false)
-  const [projectFilter, setProjectFilter] = useState<'all' | 'active' | 'pending'>('all')
   const [newProject, setNewProject] = useState({
     name: '',
     type: '',
@@ -78,9 +77,8 @@ function App() {
     status: 'pending' as 'active' | 'pending'
   })
   
-  // Edit project state
-  const [editingProject, setEditingProject] = useState<Project | null>(null)
-  const [showEditProject, setShowEditProject] = useState(false)
+  // Edit project state (currently unused - kept for future features)
+  // const [editingProject, setEditingProject] = useState<Project | null>(null)
   
   // Toast notification state
   const [toast, setToast] = useState<{
@@ -466,6 +464,9 @@ function App() {
     }
   }
 
+  // Removed unused project management functions
+  // (kept for reference if needed later)
+  /*
   const deleteProject = async (projectId: string) => {
     if (!confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
       return
@@ -563,6 +564,7 @@ function App() {
       alert('Failed to update project status')
     }
   }
+  */
 
   // Update current time every second
   useEffect(() => {
