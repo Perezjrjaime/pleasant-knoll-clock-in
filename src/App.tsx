@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield, UserCheck, UserX } from 'lucide-react'
+import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield, UserCheck, UserX, Plus, Package } from 'lucide-react'
 import { supabase, type Project, type UserRole, supabaseOperations } from './lib/supabase'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
 import AccessDenied from './components/AccessDenied'
 import './App.css'
 
-type TabType = 'clock' | 'projects' | 'hours' | 'history' | 'admin'
+type TabType = 'clock' | 'projects' | 'hours' | 'history' | 'admin' | 'materials'
 
 function App() {
   // Initialize activeTab from localStorage, or default to 'clock'
@@ -103,6 +103,46 @@ function App() {
   // Session editing state
   const [editingSession, setEditingSession] = useState<any | null>(null)
   const [showEditModal, setShowEditModal] = useState(false)
+  
+  // Add session state
+  const [showAddSessionModal, setShowAddSessionModal] = useState(false)
+  const [newSessionData, setNewSessionData] = useState({
+    project: 'The Shop',
+    role: '',
+    date: new Date().toISOString().split('T')[0], // Today's date
+    startTime: '08:00',
+    endTime: '17:00'
+  })
+
+  // Materials state
+  const [materials, setMaterials] = useState<any[]>([])
+  const [showAddMaterial, setShowAddMaterial] = useState(false)
+  const [newMaterial, setNewMaterial] = useState({
+    name: '',
+    unit: 'SY',
+    description: '',
+    status: 'active' as 'active' | 'inactive'
+  })
+  const [editingMaterial, setEditingMaterial] = useState<any | null>(null)
+  const [showEditMaterial, setShowEditMaterial] = useState(false)
+  
+  // Session materials state (for adding materials to sessions)
+  const [showAddSessionMaterial, setShowAddSessionMaterial] = useState(false)
+  const [selectedSessionForMaterials, setSelectedSessionForMaterials] = useState<any | null>(null)
+  const [sessionMaterials, setSessionMaterials] = useState<any[]>([]) // Materials for the selected session
+  const [newSessionMaterial, setNewSessionMaterial] = useState({
+    materialId: '',
+    quantity: '',
+    notes: ''
+  })
+
+  // Project tracking state (for live project stats)
+  const [selectedProjectForStats, setSelectedProjectForStats] = useState<Project | null>(null)
+  const [projectStats, setProjectStats] = useState<any>(null)
+  const [loadingProjectStats, setLoadingProjectStats] = useState(false)
+  const [showCompletedProjects, setShowCompletedProjects] = useState(false)
+  const [showCompleteConfirmation, setShowCompleteConfirmation] = useState(false)
+  const [projectToComplete, setProjectToComplete] = useState<Project | null>(null)
 
   // Authentication state
   const [session, setSession] = useState<Session | null>(null)
@@ -121,6 +161,12 @@ function App() {
 
   // Authentication effects
   useEffect(() => {
+    // Fallback timeout - if loading takes more than 5 seconds, force it to finish
+    const fallbackTimeout = setTimeout(() => {
+      console.warn('Loading timeout - forcing app to load')
+      setLoading(false)
+    }, 5000)
+
     // Get initial session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session)
@@ -128,11 +174,16 @@ function App() {
       
       // Set loading false FIRST, then load role in background
       setLoading(false)
+      clearTimeout(fallbackTimeout)
       
       // Load user role if logged in (don't await - let it run async)
       if (session?.user) {
         loadUserRole(session.user.id, session.user.email!)
       }
+    }).catch((error) => {
+      console.error('Error getting session:', error)
+      setLoading(false)
+      clearTimeout(fallbackTimeout)
     })
 
     // Listen for auth changes
@@ -151,6 +202,7 @@ function App() {
     })
 
     return () => {
+      clearTimeout(fallbackTimeout)
       subscription.unsubscribe()
     }
   }, [])
@@ -254,34 +306,33 @@ function App() {
     }
   }
 
+  // Shared function to load all projects
+  const loadAllProjects = async () => {
+    try {
+      setIsLoading(true)
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .in('status', ['active', 'pending', 'completed'])
+        .order('name')
+      
+      if (error) {
+        console.error('Error loading projects:', error)
+        setProjects([])
+      } else {
+        setProjects(data || [])
+      }
+    } catch (error) {
+      console.error('Database connection error:', error)
+      setProjects([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   // Load projects from database on app start
   useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        setIsLoading(true)
-        const { data, error } = await supabase
-          .from('projects')
-          .select('*')
-          .eq('status', 'active')
-          .order('name')
-        
-        if (error) {
-          console.error('Error loading projects:', error)
-          // Start with empty projects array - let admins add their own
-          setProjects([])
-        } else {
-          setProjects(data || [])
-        }
-      } catch (error) {
-        console.error('Database connection error:', error)
-        // Start with empty projects array - let admins add their own
-        setProjects([])
-      } finally {
-        setIsLoading(false)
-      }
-    }
-    
-    loadProjects()
+    loadAllProjects()
   }, [])
 
   // Load weekly sessions from database
@@ -290,10 +341,12 @@ function App() {
       if (!user) return
       
       try {
-        // Get the start of this week (Sunday)
+        // Get the start of this week (Monday)
         const now = new Date()
         const startOfWeek = new Date(now)
-        startOfWeek.setDate(now.getDate() - now.getDay()) // Go to Sunday
+        const dayOfWeek = now.getDay()
+        const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek // If Sunday, go back 6 days, otherwise go to Monday
+        startOfWeek.setDate(now.getDate() + diff)
         startOfWeek.setHours(0, 0, 0, 0)
         
         const { data, error } = await supabase
@@ -324,15 +377,19 @@ function App() {
           }))
           setWeeklySessions(sessions)
           
-          // Debug: log first session details
+          // Debug: log sessions
+          console.log('📊 Loaded weekly sessions:', sessions.length)
           if (sessions.length > 0) {
             console.log('First session:', {
               startTime: sessions[0].startTime,
               startTimeString: sessions[0].startTime.toDateString(),
               duration: sessions[0].duration,
               endTime: sessions[0].endTime,
-              project: sessions[0].project
+              project: sessions[0].project,
+              role: sessions[0].role
             })
+          } else {
+            console.log('⚠️ No sessions found for this week')
           }
         }
       } catch (error) {
@@ -519,6 +576,7 @@ function App() {
 
   const getLocationFromProject = (projectName: string) => {
     if (projectName === 'The Shop') return 'The Shop'
+    if (projectName === 'Lunch') return 'Lunch'
     const project = projects.find(p => p.name === projectName)
     return project?.location || 'Unknown Location'
   }
@@ -548,6 +606,8 @@ function App() {
       return
     }
 
+    console.log('💾 Saving work session:', sessionData)
+
     try {
       const { data, error } = await supabase
         .from('work_sessions')
@@ -564,11 +624,11 @@ function App() {
         .select()
       
       if (error) {
-        console.error('Error saving work session:', error)
+        console.error('❌ Error saving work session:', error)
         console.error('Error details:', JSON.stringify(error, null, 2))
         alert(`Failed to save work session: ${error.message || 'Unknown error'}`)
       } else {
-        console.log('Work session saved successfully!', data)
+        console.log('✅ Work session saved successfully!', data)
         // Reload weekly sessions to include the new one
         const startOfWeek = new Date()
         startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
@@ -733,6 +793,27 @@ function App() {
         })
       }
 
+      // Load materials for all sessions
+      const sessionIds = data.map((s: any) => s.id)
+      const { data: sessionMaterialsData } = await supabase
+        .from('session_materials')
+        .select(`
+          *,
+          materials (name, unit)
+        `)
+        .in('session_id', sessionIds)
+      
+      // Create a map of session_id -> materials array
+      const materialsMap = new Map()
+      if (sessionMaterialsData) {
+        sessionMaterialsData.forEach((sm: any) => {
+          if (!materialsMap.has(sm.session_id)) {
+            materialsMap.set(sm.session_id, [])
+          }
+          materialsMap.get(sm.session_id).push(sm)
+        })
+      }
+
       // Group by user and week_ending_date
       const grouped = (data || []).reduce((acc: any, session: any) => {
         const key = `${session.user_id}-${session.week_ending_date || 'no-week'}`
@@ -748,7 +829,12 @@ function App() {
             totalMinutes: 0
           }
         }
-        acc[key].sessions.push(session)
+        // Add materials to session
+        const sessionWithMaterials = {
+          ...session,
+          materials: materialsMap.get(session.id) || []
+        }
+        acc[key].sessions.push(sessionWithMaterials)
         acc[key].totalMinutes += session.duration || 0
         return acc
       }, {})
@@ -965,12 +1051,414 @@ function App() {
     }
   }
 
+  // Add manual session
+  const addManualSession = async () => {
+    if (!user) return
+    if (!newSessionData.role) {
+      showToast('Please select a role', 'error')
+      return
+    }
+
+    try {
+      // Create date objects for start and end times
+      const [startHours, startMinutes] = newSessionData.startTime.split(':')
+      const [endHours, endMinutes] = newSessionData.endTime.split(':')
+      
+      const startDateTime = new Date(newSessionData.date)
+      startDateTime.setHours(parseInt(startHours), parseInt(startMinutes), 0, 0)
+      
+      const endDateTime = new Date(newSessionData.date)
+      endDateTime.setHours(parseInt(endHours), parseInt(endMinutes), 0, 0)
+      
+      // Calculate duration
+      const duration = Math.round((endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60))
+      
+      if (duration <= 0) {
+        showToast('End time must be after start time', 'error')
+        return
+      }
+      
+      // Get location from project
+      const location = getLocationFromProject(newSessionData.project)
+      
+      // Save to database
+      const sessionData = {
+        project: newSessionData.project,
+        location: location,
+        role: newSessionData.role,
+        startTime: startDateTime,
+        endTime: endDateTime,
+        duration: duration
+      }
+      
+      await saveWorkSession(sessionData)
+      
+      // Reset form
+      setNewSessionData({
+        project: 'The Shop',
+        role: '',
+        date: new Date().toISOString().split('T')[0],
+        startTime: '08:00',
+        endTime: '17:00'
+      })
+      
+      setShowAddSessionModal(false)
+      showToast('Session added successfully!', 'success')
+      
+    } catch (error) {
+      console.error('Error adding manual session:', error)
+      showToast('Failed to add session', 'error')
+    }
+  }
+
   // Load timesheets when admin tab is active
   useEffect(() => {
     if (userRole === 'admin' && activeTab === 'admin') {
       loadPendingTimesheets()
     }
   }, [userRole, activeTab, timesheetFilter])
+
+  // Materials Management Functions
+  
+  // Load materials from database
+  useEffect(() => {
+    const loadMaterials = async () => {
+      if (!user) return
+      
+      try {
+        const { data, error } = await supabase
+          .from('materials')
+          .select('*')
+          .order('name')
+        
+        if (error) {
+          console.error('Error loading materials:', error)
+        } else {
+          setMaterials(data || [])
+        }
+      } catch (error) {
+        console.error('Error loading materials:', error)
+      }
+    }
+    
+    if (activeTab === 'materials' || activeTab === 'hours') {
+      loadMaterials()
+    }
+  }, [user, activeTab])
+
+  // Add new material (admin only)
+  const addNewMaterial = async () => {
+    if (!newMaterial.name.trim() || !newMaterial.unit.trim()) {
+      showToast('Please fill in name and unit', 'error')
+      return
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('materials')
+        .insert([{
+          name: newMaterial.name.trim(),
+          unit: newMaterial.unit.trim(),
+          description: newMaterial.description.trim(),
+          status: newMaterial.status,
+          created_by: user?.id
+        }])
+        .select()
+        .single()
+
+      if (error) {
+        showToast(`Failed to add material: ${error.message}`, 'error')
+        return
+      }
+
+      setMaterials(prev => [...prev, data])
+      setNewMaterial({ name: '', unit: 'SY', description: '', status: 'active' })
+      setShowAddMaterial(false)
+      showToast('Material added successfully!', 'success')
+    } catch (err) {
+      console.error('Error adding material:', err)
+      showToast('Failed to add material', 'error')
+    }
+  }
+
+  // Update existing material (admin only)
+  const updateMaterial = async () => {
+    if (!editingMaterial) return
+
+    try {
+      const { error } = await supabase
+        .from('materials')
+        .update({
+          name: editingMaterial.name,
+          unit: editingMaterial.unit,
+          description: editingMaterial.description,
+          status: editingMaterial.status
+        })
+        .eq('id', editingMaterial.id)
+
+      if (error) {
+        showToast(`Failed to update material: ${error.message}`, 'error')
+        return
+      }
+
+      setMaterials(prev => prev.map(m => m.id === editingMaterial.id ? editingMaterial : m))
+      setEditingMaterial(null)
+      setShowEditMaterial(false)
+      showToast('Material updated successfully!', 'success')
+    } catch (err) {
+      console.error('Error updating material:', err)
+      showToast('Failed to update material', 'error')
+    }
+  }
+
+  // Delete material (admin only)
+  const deleteMaterial = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this material?')) return
+
+    try {
+      const { error } = await supabase
+        .from('materials')
+        .delete()
+        .eq('id', id)
+
+      if (error) {
+        showToast(`Failed to delete material: ${error.message}`, 'error')
+        return
+      }
+
+      setMaterials(prev => prev.filter(m => m.id !== id))
+      showToast('Material deleted successfully!', 'success')
+    } catch (err) {
+      console.error('Error deleting material:', err)
+      showToast('Failed to delete material', 'error')
+    }
+  }
+
+  // Session Materials Functions
+  
+  // Load materials for a specific session
+  const loadSessionMaterials = async (sessionId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('session_materials')
+        .select(`
+          *,
+          materials (name, unit)
+        `)
+        .eq('session_id', sessionId)
+
+      if (error) {
+        console.error('Error loading session materials:', error)
+      } else {
+        setSessionMaterials(data || [])
+      }
+    } catch (error) {
+      console.error('Error loading session materials:', error)
+    }
+  }
+
+  // Add material to session
+  const addSessionMaterial = async () => {
+    if (!selectedSessionForMaterials || !newSessionMaterial.materialId || !newSessionMaterial.quantity) {
+      showToast('Please select material and enter quantity', 'error')
+      return
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('session_materials')
+        .insert([{
+          session_id: selectedSessionForMaterials.id,
+          material_id: newSessionMaterial.materialId,
+          quantity: parseFloat(newSessionMaterial.quantity),
+          notes: newSessionMaterial.notes,
+          created_by: user?.id
+        }])
+        .select(`
+          *,
+          materials (name, unit)
+        `)
+        .single()
+
+      if (error) {
+        if (error.code === '23505') {
+          showToast('This material has already been added to this session', 'error')
+        } else {
+          showToast(`Failed to add material: ${error.message}`, 'error')
+        }
+        return
+      }
+
+      setSessionMaterials(prev => [...prev, data])
+      setNewSessionMaterial({ materialId: '', quantity: '', notes: '' })
+      showToast('Material added to session!', 'success')
+    } catch (err) {
+      console.error('Error adding session material:', err)
+      showToast('Failed to add material', 'error')
+    }
+  }
+
+  // Delete material from session
+  const deleteSessionMaterial = async (id: string) => {
+    if (!confirm('Remove this material from the session?')) return
+
+    try {
+      const { error} = await supabase
+        .from('session_materials')
+        .delete()
+        .eq('id', id)
+
+      if (error) {
+        showToast(`Failed to remove material: ${error.message}`, 'error')
+        return
+      }
+
+      setSessionMaterials(prev => prev.filter(m => m.id !== id))
+      showToast('Material removed from session', 'success')
+    } catch (err) {
+      console.error('Error deleting session material:', err)
+      showToast('Failed to remove material', 'error')
+    }
+  }
+
+  // Project Tracking Functions
+  
+  // Load statistics for a specific project
+  const loadProjectStats = async (project: Project) => {
+    setLoadingProjectStats(true)
+    setSelectedProjectForStats(project)
+    
+    try {
+      // Get all approved sessions for this project
+      const { data: sessions, error } = await supabase
+        .from('work_sessions')
+        .select('*')
+        .eq('project', project.name)
+        .eq('status', 'approved')
+        .order('start_time', { ascending: true })
+      
+      if (error) {
+        console.error('Error loading project sessions:', error)
+        showToast('Failed to load project stats', 'error')
+        return
+      }
+
+      // Get materials for these sessions
+      const sessionIds = (sessions || []).map(s => s.id)
+      let materialsData: any[] = []
+      
+      if (sessionIds.length > 0) {
+        const { data: materials } = await supabase
+          .from('session_materials')
+          .select(`
+            *,
+            materials (name, unit)
+          `)
+          .in('session_id', sessionIds)
+        
+        materialsData = materials || []
+      }
+
+      // Calculate hours by role
+      const hoursByRole: Record<string, number> = {}
+      const employeeHours: Record<string, number> = {}
+      let totalMinutes = 0
+      let firstDate: Date | null = null
+      let lastDate: Date | null = null
+
+      // Get user names
+      const userIds = [...new Set((sessions || []).map(s => s.user_id))]
+      const { data: userRoles } = await supabase
+        .from('user_roles')
+        .select('user_id, full_name, email')
+        .in('user_id', userIds)
+      
+      const userNameMap = new Map()
+      if (userRoles) {
+        userRoles.forEach((u: any) => {
+          userNameMap.set(u.user_id, u.full_name || u.email)
+        })
+      }
+
+      (sessions || []).forEach((session: any) => {
+        const duration = session.duration || 0
+        totalMinutes += duration
+        
+        // Track by role
+        hoursByRole[session.role] = (hoursByRole[session.role] || 0) + duration
+        
+        // Track by employee
+        const userName = userNameMap.get(session.user_id) || 'Unknown'
+        employeeHours[userName] = (employeeHours[userName] || 0) + duration
+        
+        // Track date range
+        const sessionDate = new Date(session.start_time)
+        if (!firstDate || sessionDate < firstDate) firstDate = sessionDate
+        if (!lastDate || sessionDate > lastDate) lastDate = sessionDate
+      })
+
+      // Calculate materials totals
+      const materialTotals: Record<string, { quantity: number, unit: string }> = {}
+      materialsData.forEach((sm: any) => {
+        const key = sm.materials.name
+        if (!materialTotals[key]) {
+          materialTotals[key] = { quantity: 0, unit: sm.materials.unit }
+        }
+        materialTotals[key].quantity += parseFloat(sm.quantity)
+      })
+
+      setProjectStats({
+        project,
+        sessions: sessions || [],
+        totalMinutes,
+        hoursByRole,
+        employeeHours,
+        materialTotals,
+        firstDate,
+        lastDate,
+        sessionCount: (sessions || []).length
+      })
+    } catch (error) {
+      console.error('Error calculating project stats:', error)
+      showToast('Error calculating project statistics', 'error')
+    } finally {
+      setLoadingProjectStats(false)
+    }
+  }
+
+  // Mark project as complete
+  const markProjectComplete = async (project: Project) => {
+    if (!project.id) return
+    
+    try {
+      // Update project status to 'completed' and set completed_at timestamp
+      const { error } = await supabase
+        .from('projects')
+        .update({ 
+          status: 'completed',
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', project.id)
+      
+      if (error) {
+        showToast(`Failed to complete project: ${error.message}`, 'error')
+        return
+      }
+
+      // Load final stats for the project
+      await loadProjectStats(project)
+      
+      // Refresh projects list
+      await loadAllProjects()
+      
+      showToast(`Project "${project.name}" marked as complete!`, 'success')
+      setShowCompleteConfirmation(false)
+      setProjectToComplete(null)
+    } catch (error) {
+      console.error('Error completing project:', error)
+      showToast('Error completing project', 'error')
+    }
+  }
 
   const handleClockAction = async () => {
     const newLocation = getLocationFromProject(selectedProject)
@@ -992,6 +1480,7 @@ function App() {
         const duration = calculateDuration(workStartTime, now)
         const sessionData = {
           project: currentLocation === 'The Shop' ? 'The Shop' : 
+            currentLocation === 'Lunch' ? 'Lunch' :
             projects.find(p => p.location === currentLocation)?.name || 'Unknown',
           location: currentLocation!,
           role: currentRole,
@@ -1020,6 +1509,7 @@ function App() {
         const duration = calculateDuration(workStartTime, now)
         const sessionData = {
           project: currentLocation === 'The Shop' ? 'The Shop' : 
+            currentLocation === 'Lunch' ? 'Lunch' :
             projects.find(p => p.location === currentLocation)?.name || 'Unknown',
           location: currentLocation!,
           role: currentRole,
@@ -1067,6 +1557,7 @@ function App() {
                   disabled={isLoading}
                 >
                   <option value="The Shop">The Shop</option>
+                  <option value="Lunch">Lunch</option>
                   {isLoading ? (
                     <option disabled>Loading projects...</option>
                   ) : (
@@ -1172,41 +1663,98 @@ function App() {
           </div>
         )
       case 'projects':
-        const filteredProjects = projects.filter(project => {
-          if (projectFilter === 'all') return true
-          return project.status === projectFilter
-        })
+        const activeProjects = projects.filter(p => p.status === 'active')
+        const completedProjects = projects.filter(p => p.status === 'completed')
+        const displayProjects = showCompletedProjects ? completedProjects : activeProjects
         
         return (
           <div className="tab-content">
-            <div className="projects-container">
-              <div className="projects-header">
-                <h2>Project Management</h2>
+            <div className="live-projects-container">
+              <div className="live-projects-header">
+                <h2>Live Project Tracker</h2>
+                <p className="tracker-subtitle">Real-time hours and materials by project</p>
                 
-                {/* Filter buttons */}
-                <div className="project-filters">
+                {/* Toggle between active and completed */}
+                <div className="project-view-toggle">
                   <button 
-                    className={`filter-btn ${projectFilter === 'all' ? 'active' : ''}`}
-                    onClick={() => setProjectFilter('all')}
+                    className={`toggle-btn ${!showCompletedProjects ? 'active' : ''}`}
+                    onClick={() => setShowCompletedProjects(false)}
                   >
-                    All ({projects.length})
+                    Active Projects ({activeProjects.length})
                   </button>
                   <button 
-                    className={`filter-btn ${projectFilter === 'active' ? 'active' : ''}`}
-                    onClick={() => setProjectFilter('active')}
+                    className={`toggle-btn ${showCompletedProjects ? 'active' : ''}`}
+                    onClick={() => setShowCompletedProjects(true)}
                   >
-                    Active ({projects.filter(p => p.status === 'active').length})
-                  </button>
-                  <button 
-                    className={`filter-btn ${projectFilter === 'pending' ? 'active' : ''}`}
-                    onClick={() => setProjectFilter('pending')}
-                  >
-                    Pending ({projects.filter(p => p.status === 'pending').length})
+                    Completed ({completedProjects.length})
                   </button>
                 </div>
               </div>
-              
-              {/* Add new project form */}
+
+              {displayProjects.length === 0 ? (
+                <div className="no-active-projects">
+                  <p>No {showCompletedProjects ? 'completed' : 'active'} projects. {!showCompletedProjects && 'Start a project to track hours and materials live!'}</p>
+                  {!showCompletedProjects && (
+                    <button 
+                      className="manage-projects-btn"
+                      onClick={() => setShowAddProject(true)}
+                    >
+                      + Create Project
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="live-projects-grid">
+                  {displayProjects.map(project => (
+                    <div key={project.id} className="live-project-card">
+                      <div className="live-project-header">
+                        <div className="project-title-area">
+                          <h3>{project.name}</h3>
+                          <span className="project-type-badge">{project.type}</span>
+                          {showCompletedProjects && (
+                            <span className="completed-badge">✓ Completed</span>
+                          )}
+                        </div>
+                        <button
+                          className="view-stats-btn"
+                          onClick={() => loadProjectStats(project)}
+                        >
+                          View {showCompletedProjects ? 'Final' : 'Live'} Stats
+                        </button>
+                      </div>
+                      <div className="project-quick-info">
+                        <p className="project-location">{project.location}</p>
+                      </div>
+                      {!showCompletedProjects && (
+                        <div className="project-actions-footer">
+                          <button
+                            className="mark-complete-btn"
+                            onClick={() => {
+                              setProjectToComplete(project)
+                              setShowCompleteConfirmation(true)
+                            }}
+                          >
+                            Mark Complete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!showAddProject && (
+                <div className="manage-projects-section">
+                  <button 
+                    className="manage-projects-btn"
+                    onClick={() => setShowAddProject(true)}
+                  >
+                    + Add New Project
+                  </button>
+                </div>
+              )}
+
+              {/* Add Project Form */}
               {showAddProject && (
                 <div className="add-project-form">
                   <h3>Add New Project</h3>
@@ -1266,165 +1814,24 @@ function App() {
                   </div>
                 </div>
               )}
-              
-              {/* Edit Project Form */}
-              {showEditProject && editingProject && (
-                <div className="add-project-form">
-                  <h3>Edit Project</h3>
-                  <div className="form-row">
-                    <input
-                      type="text"
-                      placeholder="Project Name"
-                      value={editingProject.name}
-                      onChange={(e) => setEditingProject(prev => prev ? { ...prev, name: e.target.value } : null)}
-                    />
-                    <select
-                      value={editingProject.type}
-                      onChange={(e) => setEditingProject(prev => prev ? { ...prev, type: e.target.value } : null)}
-                    >
-                      <option value="">Select Project Type</option>
-                      <option value="Landscape Installation">Landscape Installation</option>
-                      <option value="Hardscape">Hardscape</option>
-                      <option value="Irrigation">Irrigation</option>
-                      <option value="Maintenance">Maintenance</option>
-                      <option value="Tree Services">Tree Services</option>
-                      <option value="Lawn Care">Lawn Care</option>
-                      <option value="Snow Removal">Snow Removal</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                  <div className="form-row">
-                    <input
-                      type="text"
-                      placeholder="Project Location"
-                      value={editingProject.location}
-                      onChange={(e) => setEditingProject(prev => prev ? { ...prev, location: e.target.value } : null)}
-                    />
-                    <div>
-                      <label>Status:</label>
-                      <select
-                        value={editingProject.status}
-                        onChange={(e) => setEditingProject(prev => prev ? { ...prev, status: e.target.value as 'active' | 'pending' } : null)}
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="active">Active</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="form-actions">
-                    <button className="save-btn" onClick={updateProject}>
-                      Update Project
-                    </button>
-                    <button 
-                      className="cancel-btn" 
-                      onClick={() => {
-                        setShowEditProject(false)
-                        setEditingProject(null)
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              {/* Project list */}
-              <div className="project-list">
-                {filteredProjects.map((project) => (
-                  <div key={project.id} className="project-card">
-                    <div className="project-header">
-                      <h3>{project.name}</h3>
-                      <div className="project-actions">
-                        <button
-                          className="edit-btn"
-                          onClick={() => startEditProject(project)}
-                          title="Edit Project"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          className="delete-btn"
-                          onClick={() => project.id && deleteProject(project.id)}
-                          title="Delete Project"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="project-details">
-                      <p className="project-type"><strong>Type:</strong> {project.type}</p>
-                      <p className="project-location"><strong>Location:</strong> {project.location}</p>
-                    </div>
-                    <div className="project-status-section">
-                      <div className="project-status-controls">
-                        <label>Status:</label>
-                        <select
-                          value={project.status}
-                          onChange={(e) => {
-                            const newStatus = e.target.value as 'active' | 'pending'
-                            if (project.id) {
-                              updateProjectStatus(project.id, newStatus)
-                            }
-                          }}
-                          className={`status-select ${project.status}`}
-                        >
-                          <option value="pending">Pending</option>
-                          <option value="active">Active</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                
-                {filteredProjects.length === 0 && (
-                  <div className="no-projects">
-                    <p>No {projectFilter === 'all' ? '' : projectFilter} projects found.</p>
-                    {!showAddProject && (
-                      <button 
-                        className="add-project-btn"
-                        onClick={() => setShowAddProject(true)}
-                      >
-                        + Add First Project
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              
-              {/* Add project button */}
-              {!showAddProject && filteredProjects.length > 0 && (
-                <div className="add-project-section">
-                  <button 
-                    className="add-project-btn"
-                    onClick={() => setShowAddProject(true)}
-                  >
-                    + Add New Project
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         )
       case 'hours':
-        // Combine in-memory and database sessions
-        const allSessions = [
-          ...todaysSessions.filter(s => s.duration).map(s => ({
-            ...s,
-            id: 'temp-' + Math.random(),
-            status: 'draft' as const
-          })),
-          ...weeklySessions
-        ]
+        // Use only database sessions (they're already saved when clocking out)
+        const allSessions = weeklySessions
         
         // Calculate week totals (all completed sessions)
         const completedSessions = allSessions.filter(s => s.duration)
         
         // Create Monday through Sunday breakdown
         const startOfWeek = new Date()
-        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()) // Go to Sunday
+        const dayOfWeek = startOfWeek.getDay()
+        const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek // If Sunday, go back 6 days, otherwise go to Monday
+        startOfWeek.setDate(startOfWeek.getDate() + diff)
         startOfWeek.setHours(0, 0, 0, 0)
         
-        const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         const weekDays = daysOfWeek.map((dayName, index) => {
           const dayDate = new Date(startOfWeek)
           dayDate.setDate(startOfWeek.getDate() + index)
@@ -1447,7 +1854,16 @@ function App() {
         return (
           <div className="tab-content">
             <div className="hours-container">
-              <h2>Time Tracking</h2>
+              <div className="hours-header">
+                <h2>Time Tracking</h2>
+                <button
+                  className="add-session-icon-btn"
+                  onClick={() => setShowAddSessionModal(true)}
+                  title="Add Session Manually"
+                >
+                  <Plus size={24} />
+                </button>
+              </div>
 
               {/* Monday through Sunday Breakdown */}
               <div className="weekly-breakdown">
@@ -1493,9 +1909,20 @@ function App() {
                                   </span>
                                 </div>
                                 
-                                {/* Edit/Delete buttons only for draft sessions */}
+                                {/* Edit/Delete/Materials buttons only for draft sessions */}
                                 {session.status === 'draft' && (
                                   <div className="session-actions">
+                                    <button
+                                      className="materials-session-btn"
+                                      onClick={() => {
+                                        setSelectedSessionForMaterials(session)
+                                        loadSessionMaterials(session.id)
+                                        setShowAddSessionMaterial(true)
+                                      }}
+                                      title="Add Materials"
+                                    >
+                                      <Package size={14} /> Materials
+                                    </button>
                                     <button
                                       className="edit-session-btn"
                                       onClick={() => {
@@ -1620,6 +2047,222 @@ function App() {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        )
+      case 'materials':
+        // Admin-only Materials tab
+        if (userRole !== 'admin') {
+          return null
+        }
+
+        const activeMaterials = materials.filter(m => m.status === 'active')
+        const inactiveMaterials = materials.filter(m => m.status === 'inactive')
+
+        return (
+          <div className="tab-content">
+            <div className="materials-container">
+              <div className="materials-header">
+                <h2>Materials Management</h2>
+                <button 
+                  className="btn-primary"
+                  onClick={() => setShowAddMaterial(true)}
+                >
+                  <Plus size={20} /> Add Material
+                </button>
+              </div>
+
+              {/* Active Materials */}
+              <div className="materials-section">
+                <h3>Active Materials ({activeMaterials.length})</h3>
+                {activeMaterials.length === 0 ? (
+                  <p className="empty-state">No active materials. Add one to get started!</p>
+                ) : (
+                  <div className="materials-list">
+                    {activeMaterials.map(material => (
+                      <div key={material.id} className="material-card">
+                        <div className="material-info">
+                          <div className="material-name">{material.name}</div>
+                          <div className="material-unit">Unit: {material.unit}</div>
+                          {material.description && (
+                            <div className="material-description">{material.description}</div>
+                          )}
+                        </div>
+                        <div className="material-actions">
+                          <button
+                            className="icon-btn"
+                            onClick={() => {
+                              setEditingMaterial(material)
+                              setShowEditMaterial(true)
+                            }}
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                          <button
+                            className="icon-btn delete"
+                            onClick={() => deleteMaterial(material.id)}
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Inactive Materials */}
+              {inactiveMaterials.length > 0 && (
+                <div className="materials-section">
+                  <h3>Inactive Materials ({inactiveMaterials.length})</h3>
+                  <div className="materials-list">
+                    {inactiveMaterials.map(material => (
+                      <div key={material.id} className="material-card inactive">
+                        <div className="material-info">
+                          <div className="material-name">{material.name}</div>
+                          <div className="material-unit">Unit: {material.unit}</div>
+                          {material.description && (
+                            <div className="material-description">{material.description}</div>
+                          )}
+                        </div>
+                        <div className="material-actions">
+                          <button
+                            className="icon-btn"
+                            onClick={() => {
+                              setEditingMaterial(material)
+                              setShowEditMaterial(true)
+                            }}
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Add Material Modal */}
+              {showAddMaterial && (
+                <div className="modal-overlay" onClick={() => setShowAddMaterial(false)}>
+                  <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                    <h3>Add New Material</h3>
+                    <div className="form-group">
+                      <label>Material Name *</label>
+                      <input
+                        type="text"
+                        value={newMaterial.name}
+                        onChange={(e) => setNewMaterial({...newMaterial, name: e.target.value})}
+                        placeholder="e.g., Single Net Straw"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Unit *</label>
+                      <select
+                        value={newMaterial.unit}
+                        onChange={(e) => setNewMaterial({...newMaterial, unit: e.target.value})}
+                      >
+                        <option value="SY">SY (Square Yards)</option>
+                        <option value="SF">SF (Square Feet)</option>
+                        <option value="CY">CY (Cubic Yards)</option>
+                        <option value="LBS">LBS (Pounds)</option>
+                        <option value="TON">TON (Tons)</option>
+                        <option value="GAL">GAL (Gallons)</option>
+                        <option value="EA">EA (Each)</option>
+                        <option value="FT">FT (Feet)</option>
+                        <option value="LF">LF (Linear Feet)</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Description</label>
+                      <textarea
+                        value={newMaterial.description}
+                        onChange={(e) => setNewMaterial({...newMaterial, description: e.target.value})}
+                        placeholder="Optional description"
+                        rows={3}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Status</label>
+                      <select
+                        value={newMaterial.status}
+                        onChange={(e) => setNewMaterial({...newMaterial, status: e.target.value as 'active' | 'inactive'})}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
+                    <div className="modal-actions">
+                      <button className="btn-secondary" onClick={() => setShowAddMaterial(false)}>
+                        Cancel
+                      </button>
+                      <button className="btn-primary" onClick={addNewMaterial}>
+                        Add Material
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Edit Material Modal */}
+              {showEditMaterial && editingMaterial && (
+                <div className="modal-overlay" onClick={() => setShowEditMaterial(false)}>
+                  <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                    <h3>Edit Material</h3>
+                    <div className="form-group">
+                      <label>Material Name *</label>
+                      <input
+                        type="text"
+                        value={editingMaterial.name}
+                        onChange={(e) => setEditingMaterial({...editingMaterial, name: e.target.value})}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Unit *</label>
+                      <select
+                        value={editingMaterial.unit}
+                        onChange={(e) => setEditingMaterial({...editingMaterial, unit: e.target.value})}
+                      >
+                        <option value="SY">SY (Square Yards)</option>
+                        <option value="SF">SF (Square Feet)</option>
+                        <option value="CY">CY (Cubic Yards)</option>
+                        <option value="LBS">LBS (Pounds)</option>
+                        <option value="TON">TON (Tons)</option>
+                        <option value="GAL">GAL (Gallons)</option>
+                        <option value="EA">EA (Each)</option>
+                        <option value="FT">FT (Feet)</option>
+                        <option value="LF">LF (Linear Feet)</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Description</label>
+                      <textarea
+                        value={editingMaterial.description || ''}
+                        onChange={(e) => setEditingMaterial({...editingMaterial, description: e.target.value})}
+                        rows={3}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Status</label>
+                      <select
+                        value={editingMaterial.status}
+                        onChange={(e) => setEditingMaterial({...editingMaterial, status: e.target.value})}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
+                    <div className="modal-actions">
+                      <button className="btn-secondary" onClick={() => setShowEditMaterial(false)}>
+                        Cancel
+                      </button>
+                      <button className="btn-primary" onClick={updateMaterial}>
+                        Save Changes
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )
@@ -1878,6 +2521,21 @@ function App() {
                                         <strong>Location:</strong> {session.location}
                                       </div>
                                     </div>
+                                    {/* Materials used in this session */}
+                                    {session.materials && session.materials.length > 0 && (
+                                      <div className="session-materials-used">
+                                        <strong>Materials Used:</strong>
+                                        <div className="materials-used-list">
+                                          {session.materials.map((m: any) => (
+                                            <div key={m.id} className="material-used-item">
+                                              <span className="material-used-name">{m.materials.name}</span>
+                                              <span className="material-used-qty">{m.quantity} {m.materials.unit}</span>
+                                              {m.notes && <span className="material-used-notes">({m.notes})</span>}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
                                     <div className="session-actions">
                                       <button 
                                         className="edit-session-btn"
@@ -2059,29 +2717,6 @@ function App() {
                   )}
                 </div>
               </div>
-              
-              {/* Stats Section */}
-              <div className="admin-section">
-                <h3>System Statistics</h3>
-                <div className="stats-grid">
-                  <div className="stat-card">
-                    <div className="stat-number">{allUsers.length}</div>
-                    <div className="stat-label">Total Users</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-number">{pendingUsers.length}</div>
-                    <div className="stat-label">Pending Approval</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-number">{approvedUsers.length}</div>
-                    <div className="stat-label">Approved Users</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-number">{adminUsers.length}</div>
-                    <div className="stat-label">Admins</div>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         )
@@ -2166,13 +2801,6 @@ function App() {
       {/* Main Content */}
       <main className="main-content">
         <div className="app-header">
-          <div className="logo-container">
-            <img 
-              src="/pleasant-knoll-logo.jpg" 
-              alt="Pleasant Knoll Landscaping" 
-              className="company-logo"
-            />
-          </div>
           <div className="user-info">
             <div className="user-details">
               <div className="user-avatar">
@@ -2191,6 +2819,13 @@ function App() {
               <LogOut size={18} />
             </button>
           </div>
+          <div className="logo-container">
+            <img 
+              src="/pleasant-knoll-logo.jpg" 
+              alt="Pleasant Knoll Landscaping" 
+              className="company-logo"
+            />
+          </div>
         </div>
         {renderTabContent()}
       </main>
@@ -2198,7 +2833,7 @@ function App() {
       {/* Bottom Navigation */}
       <nav className="bottom-nav">
         {userRole === 'admin' ? (
-          // Admin-only navigation: Admin, Projects, History
+          // Admin-only navigation: Admin, Projects, Materials, History
           <>
             <button 
               className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
@@ -2213,6 +2848,13 @@ function App() {
             >
               <Calendar size={24} />
               <span>Projects</span>
+            </button>
+            <button 
+              className={`nav-item ${activeTab === 'materials' ? 'active' : ''}`}
+              onClick={() => setActiveTab('materials')}
+            >
+              <Package size={24} />
+              <span>Materials</span>
             </button>
             <button 
               className={`nav-item ${activeTab === 'history' ? 'active' : ''}`}
@@ -2243,6 +2885,178 @@ function App() {
         )}
       </nav>
 
+      {/* Project Stats Modal */}
+      {selectedProjectForStats && projectStats && (
+        <div className="modal-overlay" onClick={() => setSelectedProjectForStats(null)}>
+          <div className="modal-content project-stats-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="project-stats-header">
+              <div>
+                <h2>{projectStats.project.name}</h2>
+                <p className="stats-project-type">{projectStats.project.type}</p>
+                <p className="stats-project-location">{projectStats.project.location}</p>
+              </div>
+              <button 
+                className="modal-close-btn" 
+                onClick={() => setSelectedProjectForStats(null)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="project-stats-summary">
+              <div className="stat-box">
+                <h4>Total Hours</h4>
+                <p className="stat-value">{Math.round(projectStats.totalMinutes / 60 * 10) / 10}h</p>
+              </div>
+              <div className="stat-box">
+                <h4>Sessions</h4>
+                <p className="stat-value">{projectStats.sessionCount}</p>
+              </div>
+              <div className="stat-box">
+                <h4>Workers</h4>
+                <p className="stat-value">{Object.keys(projectStats.employeeHours).length}</p>
+              </div>
+              <div className="stat-box">
+                <h4>Date Range</h4>
+                <p className="stat-value-small">
+                  {projectStats.firstDate?.toLocaleDateString()} - {projectStats.lastDate?.toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+
+            <div className="project-stats-section">
+              <h3>Hours by Equipment/Role</h3>
+              {Object.keys(projectStats.hoursByRole).length > 0 ? (
+                <table className="stats-table">
+                  <thead>
+                    <tr>
+                      <th>Role/Equipment</th>
+                      <th>Hours</th>
+                      <th>% of Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(projectStats.hoursByRole)
+                      .sort((a, b) => (b[1] as number) - (a[1] as number))
+                      .map(([role, minutes]) => {
+                        const mins = minutes as number
+                        const hours = Math.round(mins / 60 * 10) / 10
+                        const percentage = Math.round((mins / projectStats.totalMinutes) * 100)
+                        return (
+                          <tr key={role}>
+                            <td><strong>{role}</strong></td>
+                            <td>{hours}h</td>
+                            <td>{percentage}%</td>
+                          </tr>
+                        )
+                      })}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="no-data">No hours recorded yet</p>
+              )}
+            </div>
+
+            <div className="project-stats-section">
+              <h3>Materials Used</h3>
+              {Object.keys(projectStats.materialTotals).length > 0 ? (
+                <table className="stats-table">
+                  <thead>
+                    <tr>
+                      <th>Material</th>
+                      <th>Quantity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(projectStats.materialTotals)
+                      .sort((a, b) => (b[1] as any).quantity - (a[1] as any).quantity)
+                      .map(([material, data]) => {
+                        const materialData = data as { quantity: number; unit: string }
+                        return (
+                          <tr key={material}>
+                            <td><strong>{material}</strong></td>
+                            <td>{materialData.quantity} {materialData.unit}</td>
+                          </tr>
+                        )
+                      })}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="no-data">No materials recorded yet</p>
+              )}
+            </div>
+
+            <div className="project-stats-section">
+              <h3>Hours by Employee</h3>
+              {Object.keys(projectStats.employeeHours).length > 0 ? (
+                <table className="stats-table">
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th>Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(projectStats.employeeHours)
+                      .sort((a, b) => (b[1] as number) - (a[1] as number))
+                      .map(([employee, minutes]) => {
+                        const mins = minutes as number
+                        const hours = Math.round(mins / 60 * 10) / 10
+                        return (
+                          <tr key={employee}>
+                            <td><strong>{employee}</strong></td>
+                            <td>{hours}h</td>
+                          </tr>
+                        )
+                      })}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="no-data">No employee hours recorded yet</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Complete Project Confirmation Modal */}
+      {showCompleteConfirmation && projectToComplete && (
+        <div className="modal-overlay" onClick={() => setShowCompleteConfirmation(false)}>
+          <div className="modal-content complete-confirmation-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Mark Project Complete?</h3>
+            <p className="confirm-message">
+              Are you sure you want to mark "<strong>{projectToComplete.name}</strong>" as complete?
+            </p>
+            <p className="confirm-details">
+              This will:
+            </p>
+            <ul className="confirm-list">
+              <li>Move the project to "Completed" status</li>
+              <li>Preserve all hours and materials data</li>
+              <li>Generate a final project report</li>
+              <li>Remove it from active tracking</li>
+            </ul>
+            <div className="confirm-actions">
+              <button 
+                className="confirm-complete-btn"
+                onClick={() => markProjectComplete(projectToComplete)}
+              >
+                Yes, Mark Complete
+              </button>
+              <button 
+                className="cancel-btn"
+                onClick={() => {
+                  setShowCompleteConfirmation(false)
+                  setProjectToComplete(null)
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit Session Modal */}
       {showEditModal && editingSession && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
@@ -2256,6 +3070,7 @@ function App() {
                   onChange={(e) => setEditingSession({...editingSession, project: e.target.value})}
                 >
                   <option value="The Shop">The Shop</option>
+                  <option value="Lunch">Lunch</option>
                   {projects.map(p => (
                     <option key={p.id} value={p.name}>{p.name}</option>
                   ))}
@@ -2279,12 +3094,22 @@ function App() {
                   <label>Start Time:</label>
                   <input
                     type="time"
-                    value={editingSession.start_time ? new Date(editingSession.start_time).toTimeString().slice(0, 5) : ''}
+                    value={editingSession.startTime ? new Date(editingSession.startTime).toTimeString().slice(0, 5) : ''}
                     onChange={(e) => {
                       const [hours, minutes] = e.target.value.split(':')
-                      const newStart = new Date(editingSession.start_time)
+                      const newStart = new Date(editingSession.startTime)
                       newStart.setHours(parseInt(hours), parseInt(minutes))
-                      setEditingSession({...editingSession, start_time: newStart.toISOString()})
+                      
+                      // Recalculate duration when start time changes
+                      const endTime = editingSession.endTime ? new Date(editingSession.endTime) : newStart
+                      const newDuration = Math.round((endTime.getTime() - newStart.getTime()) / (1000 * 60))
+                      
+                      setEditingSession({
+                        ...editingSession, 
+                        startTime: newStart,
+                        start_time: newStart.toISOString(),
+                        duration: newDuration
+                      })
                     }}
                   />
                 </div>
@@ -2293,13 +3118,22 @@ function App() {
                   <label>End Time:</label>
                   <input
                     type="time"
-                    value={editingSession.end_time ? new Date(editingSession.end_time).toTimeString().slice(0, 5) : ''}
+                    value={editingSession.endTime ? new Date(editingSession.endTime).toTimeString().slice(0, 5) : ''}
                     onChange={(e) => {
                       const [hours, minutes] = e.target.value.split(':')
-                      const newEnd = new Date(editingSession.end_time)
+                      const newEnd = new Date(editingSession.endTime)
                       newEnd.setHours(parseInt(hours), parseInt(minutes))
-                      const newDuration = Math.round((newEnd.getTime() - new Date(editingSession.start_time).getTime()) / (1000 * 60))
-                      setEditingSession({...editingSession, end_time: newEnd.toISOString(), duration: newDuration})
+                      
+                      // Recalculate duration when end time changes
+                      const startTime = editingSession.startTime ? new Date(editingSession.startTime) : newEnd
+                      const newDuration = Math.round((newEnd.getTime() - startTime.getTime()) / (1000 * 60))
+                      
+                      setEditingSession({
+                        ...editingSession, 
+                        endTime: newEnd,
+                        end_time: newEnd.toISOString(), 
+                        duration: newDuration
+                      })
                     }}
                   />
                 </div>
@@ -2329,6 +3163,206 @@ function App() {
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Session Modal */}
+      {showAddSessionModal && (
+        <div className="modal-overlay" onClick={() => setShowAddSessionModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Add Session Manually</h3>
+            <div className="edit-session-form">
+              <div className="form-group">
+                <label>Date:</label>
+                <input
+                  type="date"
+                  value={newSessionData.date}
+                  onChange={(e) => setNewSessionData({...newSessionData, date: e.target.value})}
+                  max={new Date().toISOString().split('T')[0]} // Can't add future sessions
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Project:</label>
+                <select
+                  value={newSessionData.project}
+                  onChange={(e) => setNewSessionData({...newSessionData, project: e.target.value})}
+                >
+                  <option value="The Shop">The Shop</option>
+                  <option value="Lunch">Lunch</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.name}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <label>Role:</label>
+                <select
+                  value={newSessionData.role}
+                  onChange={(e) => setNewSessionData({...newSessionData, role: e.target.value})}
+                >
+                  <option value="">Choose your role...</option>
+                  {commonRoles.map(role => (
+                    <option key={role} value={role}>{role}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Start Time:</label>
+                  <input
+                    type="time"
+                    value={newSessionData.startTime}
+                    onChange={(e) => setNewSessionData({...newSessionData, startTime: e.target.value})}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>End Time:</label>
+                  <input
+                    type="time"
+                    value={newSessionData.endTime}
+                    onChange={(e) => setNewSessionData({...newSessionData, endTime: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  className="save-btn"
+                  onClick={addManualSession}
+                >
+                  Add Session
+                </button>
+                <button
+                  className="cancel-btn"
+                  onClick={() => {
+                    setShowAddSessionModal(false)
+                    setNewSessionData({
+                      project: 'The Shop',
+                      role: '',
+                      date: new Date().toISOString().split('T')[0],
+                      startTime: '08:00',
+                      endTime: '17:00'
+                    })
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Session Materials Modal */}
+      {showAddSessionMaterial && selectedSessionForMaterials && (
+        <div className="modal-overlay" onClick={() => {
+          setShowAddSessionMaterial(false)
+          setSelectedSessionForMaterials(null)
+          setSessionMaterials([])
+          setNewSessionMaterial({ materialId: '', quantity: '', notes: '' })
+        }}>
+          <div className="modal-content wide-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Materials for Session</h3>
+            <div className="session-info-box">
+              <div><strong>Project:</strong> {selectedSessionForMaterials.project}</div>
+              <div><strong>Role:</strong> {selectedSessionForMaterials.role}</div>
+              <div><strong>Date:</strong> {selectedSessionForMaterials.startTime.toLocaleDateString()}</div>
+            </div>
+
+            {/* Existing materials for this session */}
+            {sessionMaterials.length > 0 && (
+              <div className="session-materials-list">
+                <h4>Added Materials</h4>
+                {sessionMaterials.map((sm: any) => (
+                  <div key={sm.id} className="session-material-item">
+                    <div className="material-details">
+                      <strong>{sm.materials.name}</strong>
+                      <span>{sm.quantity} {sm.materials.unit}</span>
+                      {sm.notes && <div className="material-notes">{sm.notes}</div>}
+                    </div>
+                    <button
+                      className="icon-btn delete"
+                      onClick={() => deleteSessionMaterial(sm.id)}
+                      title="Remove"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add new material form */}
+            <div className="add-material-form">
+              <h4>Add Material</h4>
+              <div className="form-group">
+                <label>Material:</label>
+                <select
+                  value={newSessionMaterial.materialId}
+                  onChange={(e) => setNewSessionMaterial({...newSessionMaterial, materialId: e.target.value})}
+                >
+                  <option value="">Select material...</option>
+                  {materials
+                    .filter(m => m.status === 'active')
+                    .map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.unit})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Quantity:</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={newSessionMaterial.quantity}
+                    onChange={(e) => setNewSessionMaterial({...newSessionMaterial, quantity: e.target.value})}
+                    placeholder="e.g., 1500"
+                  />
+                </div>
+
+                <div className="form-group flex-2">
+                  <label>Notes (optional):</label>
+                  <input
+                    type="text"
+                    value={newSessionMaterial.notes}
+                    onChange={(e) => setNewSessionMaterial({...newSessionMaterial, notes: e.target.value})}
+                    placeholder="e.g., North slope area"
+                  />
+                </div>
+              </div>
+
+              <button
+                className="btn-primary"
+                onClick={addSessionMaterial}
+                disabled={!newSessionMaterial.materialId || !newSessionMaterial.quantity}
+              >
+                <Plus size={18} /> Add Material to Session
+              </button>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  setShowAddSessionMaterial(false)
+                  setSelectedSessionForMaterials(null)
+                  setSessionMaterials([])
+                  setNewSessionMaterial({ materialId: '', quantity: '', notes: '' })
+                }}
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>
