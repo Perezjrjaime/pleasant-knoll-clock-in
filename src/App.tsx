@@ -1745,7 +1745,7 @@ function App() {
                 </div>
               )}
 
-              {!showAddProject && (
+              {!showAddProject && displayProjects.length > 0 && (
                 <div className="manage-projects-section">
                   <button 
                     className="manage-projects-btn"
