@@ -58,7 +58,15 @@ function App() {
     'Straw blower',
     'Hydromulcher',
     'Mini skid steer',
-    'Mini excavator'
+    'Mini excavator',
+    'Compactor',
+    'Chain Saw Labor',
+    'Wood Chipper',
+    'Snow Pusher',
+    'Snow Blower',
+    'Plow Truck',
+    'Salter',
+    'Large Post Driver'
   ]
   
   // Base locations (always available)
@@ -2167,6 +2175,7 @@ function App() {
                         <option value="SY">SY (Square Yards)</option>
                         <option value="SF">SF (Square Feet)</option>
                         <option value="CY">CY (Cubic Yards)</option>
+                        <option value="YD">YD (Yards)</option>
                         <option value="LBS">LBS (Pounds)</option>
                         <option value="TON">TON (Tons)</option>
                         <option value="GAL">GAL (Gallons)</option>
@@ -2228,6 +2237,7 @@ function App() {
                         <option value="SY">SY (Square Yards)</option>
                         <option value="SF">SF (Square Feet)</option>
                         <option value="CY">CY (Cubic Yards)</option>
+                        <option value="YD">YD (Yards)</option>
                         <option value="LBS">LBS (Pounds)</option>
                         <option value="TON">TON (Tons)</option>
                         <option value="GAL">GAL (Gallons)</option>
