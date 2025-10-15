@@ -4164,6 +4164,24 @@ body {
   box-shadow: 0 4px 8px rgba(34, 197, 94, 0.3);
 }
 
+.reactivate-btn {
+  padding: 0.5rem 1rem;
+  background: white;
+  color: #3b82f6;
+  border: 2px solid #3b82f6;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reactivate-btn:hover {
+  background: #3b82f6;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+}
+
 .manage-projects-section {
   text-align: center;
   margin-top: 2rem;

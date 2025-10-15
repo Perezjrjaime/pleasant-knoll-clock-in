@@ -1470,6 +1470,34 @@ function App() {
     }
   }
 
+  const reactivateProject = async (project: Project) => {
+    if (!project.id) return
+    
+    try {
+      // Update project status back to 'active' and clear completed_at timestamp
+      const { error } = await supabase
+        .from('projects')
+        .update({ 
+          status: 'active',
+          completed_at: null
+        })
+        .eq('id', project.id)
+      
+      if (error) {
+        showToast(`Failed to reactivate project: ${error.message}`, 'error')
+        return
+      }
+      
+      // Refresh projects list
+      await loadAllProjects()
+      
+      showToast(`Project "${project.name}" reactivated!`, 'success')
+    } catch (error) {
+      console.error('Error reactivating project:', error)
+      showToast('Error reactivating project', 'error')
+    }
+  }
+
   const handleClockAction = async () => {
     const newLocation = getLocationFromProject(selectedProject)
     const now = new Date()
@@ -1571,11 +1599,13 @@ function App() {
                   {isLoading ? (
                     <option disabled>Loading projects...</option>
                   ) : (
-                    projects.map(project => (
-                      <option key={project.id} value={project.name}>
-                        {project.name}
-                      </option>
-                    ))
+                    projects
+                      .filter(project => project.status !== 'completed')
+                      .map(project => (
+                        <option key={project.id} value={project.name}>
+                          {project.name}
+                        </option>
+                      ))
                   )}
                 </select>
               </div>
@@ -1735,7 +1765,7 @@ function App() {
                       <div className="project-quick-info">
                         <p className="project-location">{project.location}</p>
                       </div>
-                      {!showCompletedProjects && (
+                      {!showCompletedProjects ? (
                         <div className="project-actions-footer">
                           <button
                             className="mark-complete-btn"
@@ -1745,6 +1775,15 @@ function App() {
                             }}
                           >
                             Mark Complete
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="project-actions-footer">
+                          <button
+                            className="reactivate-btn"
+                            onClick={() => reactivateProject(project)}
+                          >
+                            Reactivate Project
                           </button>
                         </div>
                       )}
