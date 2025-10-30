@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
 // Get Supabase credentials from environment variables
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -8,7 +8,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables. Please check your .env file.')
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Singleton pattern to prevent multiple instances during HMR
+let supabaseInstance: SupabaseClient | null = null
+
+export const supabase = supabaseInstance || (supabaseInstance = createClient(supabaseUrl, supabaseAnonKey))
 
 // Database types for TypeScript
 export interface WorkSession {
@@ -20,6 +23,7 @@ export interface WorkSession {
   start_time: string
   end_time?: string
   duration?: number
+  notes?: string
   created_at?: string
 }
 
@@ -30,6 +34,7 @@ export interface Project {
   status: string
   location: string
   created_at?: string
+  completed_at?: string
 }
 
 export interface UserRole {

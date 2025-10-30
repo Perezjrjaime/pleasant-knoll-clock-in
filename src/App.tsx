@@ -5,7 +5,7 @@ import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
 import AccessDenied from './components/AccessDenied'
 import './App.css'
 
-type TabType = 'clock' | 'projects' | 'hours' | 'history' | 'admin' | 'materials'
+type TabType = 'clock' | 'projects' | 'hours' | 'my-materials' | 'history' | 'admin' | 'materials'
 
 function App() {
   // Initialize activeTab from localStorage, or default to 'clock'
@@ -16,12 +16,12 @@ function App() {
   
   const [selectedProject, setSelectedProject] = useState('The Shop')
   const [selectedRole, setSelectedRole] = useState('')
+  const [sessionNotes, setSessionNotes] = useState('')
   const [currentLocation, setCurrentLocation] = useState<string | null>(null)
   const [currentRole, setCurrentRole] = useState<string | null>(null)
   const [isWorking, setIsWorking] = useState(false)
   const [workStartTime, setWorkStartTime] = useState<Date | null>(null)
   const [currentTime, setCurrentTime] = useState(new Date())
-  const [historyFilter, setHistoryFilter] = useState('this-week')
   const [todaysSessions, setTodaysSessions] = useState<{
     project: string;
     location: string;
@@ -40,6 +40,7 @@ function App() {
     startTime: Date;
     endTime: Date;
     duration: number;
+    notes?: string;
     status: 'draft' | 'submitted' | 'approved' | 'rejected';
     weekEndingDate?: Date;
     employeeInitials?: string;
@@ -48,6 +49,9 @@ function App() {
     approvedAt?: Date;
     adminNotes?: string;
   }[]>([])
+  
+  // Track recent modifications to prevent premature reloading
+  const [lastModificationTime, setLastModificationTime] = useState<number>(0)
   
   // Common landscaping roles
   const commonRoles = [
@@ -139,16 +143,34 @@ function App() {
   const [newSessionMaterial, setNewSessionMaterial] = useState({
     materialId: '',
     quantity: '',
-    notes: ''
+    notes: '',
+    project: '',
+    date: new Date().toISOString().split('T')[0]
   })
 
   // Project tracking state (for live project stats)
   const [selectedProjectForStats, setSelectedProjectForStats] = useState<Project | null>(null)
   const [projectStats, setProjectStats] = useState<any>(null)
   // const [loadingProjectStats, setLoadingProjectStats] = useState(false)  // Unused for now
-  const [showCompletedProjects, setShowCompletedProjects] = useState(false)
   const [showCompleteConfirmation, setShowCompleteConfirmation] = useState(false)
   const [projectToComplete, setProjectToComplete] = useState<Project | null>(null)
+
+  // Confirmation modal state
+  const [confirmationModal, setConfirmationModal] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    cancelText?: string;
+  }>({
+    show: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    confirmText: 'Confirm',
+    cancelText: 'Cancel'
+  })
 
   // Authentication state
   const [session, setSession] = useState<Session | null>(null)
@@ -163,6 +185,18 @@ function App() {
     setTimeout(() => {
       setToast(prev => ({ ...prev, show: false }))
     }, 4000)
+  }
+
+  // Confirmation modal helper
+  const showConfirmation = (title: string, message: string, onConfirm: () => void, confirmText = 'Confirm', cancelText = 'Cancel') => {
+    setConfirmationModal({
+      show: true,
+      title,
+      message,
+      onConfirm,
+      confirmText,
+      cancelText
+    })
   }
 
   // Authentication effects
@@ -373,6 +407,7 @@ function App() {
             startTime: new Date(session.start_time),
             endTime: new Date(session.end_time),
             duration: session.duration,
+            notes: session.notes,
             status: session.status,
             weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
             employeeInitials: session.employee_initials,
@@ -408,12 +443,18 @@ function App() {
     // Reload sessions when we switch to the hours tab
     const interval = setInterval(() => {
       if (activeTab === 'hours') {
-        loadWeeklySessions()
+        // Don't reload if we just modified data (within last 3 seconds)
+        const timeSinceModification = Date.now() - lastModificationTime
+        if (timeSinceModification > 3000) {
+          loadWeeklySessions()
+        } else {
+          console.log('⏸️ Skipping reload - recent modification')
+        }
       }
     }, 10000) // Refresh every 10 seconds when on hours tab
     
     return () => clearInterval(interval)
-  }, [user, activeTab])
+  }, [user, activeTab, lastModificationTime])
 
   // Project management functions
   const addNewProject = async () => {
@@ -555,7 +596,7 @@ function App() {
 
       if (error) {
         console.error('Error updating project status:', error)
-        alert('Failed to update project status')
+        showToast('Failed to update project status', 'error')
         return
       }
 
@@ -569,7 +610,7 @@ function App() {
       )
     } catch (err) {
       console.error('Error updating project status:', err)
-      alert('Failed to update project status')
+      showToast('Failed to update project status', 'error')
     }
   }
   */
@@ -610,6 +651,7 @@ function App() {
     startTime: Date;
     endTime: Date;
     duration: number;
+    notes?: string;
   }) => {
     if (!user) {
       console.error('No authenticated user - cannot save session')
@@ -629,6 +671,7 @@ function App() {
           start_time: sessionData.startTime.toISOString(),
           end_time: sessionData.endTime.toISOString(),
           duration: sessionData.duration,
+          notes: sessionData.notes || null,
           status: 'draft' // New sessions start as draft
         })
         .select()
@@ -636,7 +679,7 @@ function App() {
       if (error) {
         console.error('❌ Error saving work session:', error)
         console.error('Error details:', JSON.stringify(error, null, 2))
-        alert(`Failed to save work session: ${error.message || 'Unknown error'}`)
+        showToast(`Failed to save work session: ${error.message || 'Unknown error'}`, 'error')
       } else {
         console.log('✅ Work session saved successfully!', data)
         // Reload weekly sessions to include the new one
@@ -660,6 +703,7 @@ function App() {
             startTime: new Date(session.start_time),
             endTime: new Date(session.end_time),
             duration: session.duration,
+            notes: session.notes,
             status: session.status,
             weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
             employeeInitials: session.employee_initials,
@@ -740,6 +784,7 @@ function App() {
             startTime: new Date(session.start_time),
             endTime: new Date(session.end_time),
             duration: session.duration,
+            notes: session.notes,
             status: session.status,
             weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
             employeeInitials: session.employee_initials,
@@ -979,6 +1024,7 @@ function App() {
             startTime: new Date(session.start_time),
             endTime: new Date(session.end_time),
             duration: session.duration,
+            notes: session.notes,
             status: session.status,
             weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
             employeeInitials: session.employee_initials,
@@ -1002,63 +1048,63 @@ function App() {
   // Delete session
   const deleteSession = async (sessionId: string) => {
     if (!user) return
-    if (!confirm('Are you sure you want to delete this session?')) return
 
-    try {
-      const { error } = await supabase
-        .from('work_sessions')
-        .delete()
-        .eq('id', sessionId)
+    console.log('🗑️ Delete button clicked for session:', sessionId)
+    
+    // Find the session to see its status
+    const sessionToDelete = weeklySessions.find(s => s.id === sessionId)
+    console.log('Session to delete:', sessionToDelete)
+    console.log('Session status:', sessionToDelete?.status)
 
-      if (error) {
-        console.error('Error deleting session:', error)
-        showToast('Failed to delete session', 'error')
-      } else {
-        showToast('Session deleted successfully', 'success')
-        setShowEditModal(false)
-        setEditingSession(null)
-        
-        // Reload sessions
-        if (userRole === 'admin') {
-          loadPendingTimesheets()
+    showConfirmation(
+      'Delete Session',
+      'Are you sure you want to delete this session? This action cannot be undone.',
+      async () => {
+        console.log('✅ User confirmed deletion')
+        try {
+          console.log('Deleting from database...')
+          console.log('Session ID to delete:', sessionId)
+          console.log('User ID:', user.id)
+          
+          const { data, error } = await supabase
+            .from('work_sessions')
+            .delete()
+            .eq('id', sessionId)
+            .select() // Return the deleted row to confirm
+
+          console.log('Delete response:', { data, error })
+
+          if (error) {
+            console.error('❌ Error deleting session:', error)
+            showToast('Failed to delete session: ' + error.message, 'error')
+          } else {
+            console.log('✅ Deleted from database successfully')
+            console.log('Deleted row:', data)
+            // Mark modification time to prevent premature reload
+            setLastModificationTime(Date.now())
+            // Remove from local state immediately
+            setWeeklySessions(prev => {
+              const filtered = prev.filter(s => s.id !== sessionId)
+              console.log('🗑️ Removed session. Count:', prev.length, '→', filtered.length)
+              return filtered
+            })
+            showToast('Session deleted successfully', 'success')
+            setShowEditModal(false)
+            setEditingSession(null)
+            
+            // Reload sessions if admin (for pending timesheets view)
+            if (userRole === 'admin') {
+              loadPendingTimesheets()
+            }
+          }
+        } catch (error) {
+          console.error('Error deleting session:', error)
+          showToast('An error occurred', 'error')
         }
-        
-        // Reload weekly sessions for employee
-        const startOfWeek = new Date()
-        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
-        startOfWeek.setHours(0, 0, 0, 0)
-        
-        const { data: updatedSessions } = await supabase
-          .from('work_sessions')
-          .select('*')
-          .eq('user_id', user.id)
-          .gte('start_time', startOfWeek.toISOString())
-          .order('start_time', { ascending: false })
-        
-        if (updatedSessions) {
-          const sessions = updatedSessions.map((session: any) => ({
-            id: session.id,
-            project: session.project,
-            location: session.location,
-            role: session.role,
-            startTime: new Date(session.start_time),
-            endTime: new Date(session.end_time),
-            duration: session.duration,
-            status: session.status,
-            weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
-            employeeInitials: session.employee_initials,
-            submittedAt: session.submitted_at ? new Date(session.submitted_at) : undefined,
-            approvedBy: session.approved_by,
-            approvedAt: session.approved_at ? new Date(session.approved_at) : undefined,
-            adminNotes: session.admin_notes
-          }))
-          setWeeklySessions(sessions)
-        }
-      }
-    } catch (error) {
-      console.error('Error deleting session:', error)
-      showToast('An error occurred', 'error')
-    }
+      },
+      'Delete',
+      'Cancel'
+    )
   }
 
   // Add manual session
@@ -1151,10 +1197,17 @@ function App() {
       }
     }
     
-    if (activeTab === 'materials' || activeTab === 'hours') {
+    if (activeTab === 'materials' || activeTab === 'hours' || activeTab === 'my-materials') {
       loadMaterials()
     }
   }, [user, activeTab])
+
+  // Load employee materials when Materials tab is active
+  useEffect(() => {
+    if (activeTab === 'my-materials' && user) {
+      loadEmployeeMaterials()
+    }
+  }, [activeTab, user])
 
   // Add new material (admin only)
   const addNewMaterial = async () => {
@@ -1223,31 +1276,60 @@ function App() {
 
   // Delete material (admin only)
   const deleteMaterial = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this material?')) return
+    showConfirmation(
+      'Delete Material',
+      'Are you sure you want to delete this material from the catalog?',
+      async () => {
+        try {
+          const { error } = await supabase
+            .from('materials')
+            .delete()
+            .eq('id', id)
 
-    try {
-      const { error } = await supabase
-        .from('materials')
-        .delete()
-        .eq('id', id)
+          if (error) {
+            showToast(`Failed to delete material: ${error.message}`, 'error')
+            return
+          }
 
-      if (error) {
-        showToast(`Failed to delete material: ${error.message}`, 'error')
-        return
-      }
-
-      setMaterials(prev => prev.filter(m => m.id !== id))
-      showToast('Material deleted successfully!', 'success')
-    } catch (err) {
-      console.error('Error deleting material:', err)
-      showToast('Failed to delete material', 'error')
-    }
+          setMaterials(prev => prev.filter(m => m.id !== id))
+          showToast('Material deleted successfully!', 'success')
+        } catch (err) {
+          console.error('Error deleting material:', err)
+          showToast('Failed to delete material', 'error')
+        }
+      },
+      'Delete',
+      'Cancel'
+    )
   }
 
   // Session Materials Functions
   
-  // Load materials for a specific session
-  const loadSessionMaterials = async (sessionId: string) => {
+  // Load materials for a specific session (currently unused - kept for potential future use)
+  // const loadSessionMaterials = async (sessionId: string) => {
+  //   try {
+  //     const { data, error } = await supabase
+  //       .from('session_materials')
+  //       .select(`
+  //         *,
+  //         materials (name, unit)
+  //       `)
+  //       .eq('session_id', sessionId)
+
+  //     if (error) {
+  //       console.error('Error loading session materials:', error)
+  //     } else {
+  //       setSessionMaterials(data || [])
+  //     }
+  //   } catch (error) {
+  //     console.error('Error loading session materials:', error)
+  //   }
+  // }
+
+  // Load all materials for current employee
+  const loadEmployeeMaterials = async () => {
+    if (!user?.id) return
+    
     try {
       const { data, error } = await supabase
         .from('session_materials')
@@ -1255,21 +1337,67 @@ function App() {
           *,
           materials (name, unit)
         `)
-        .eq('session_id', sessionId)
+        .eq('created_by', user.id)
+        .order('created_at', { ascending: false })
 
       if (error) {
-        console.error('Error loading session materials:', error)
+        console.error('Error loading employee materials:', error)
       } else {
         setSessionMaterials(data || [])
       }
     } catch (error) {
-      console.error('Error loading session materials:', error)
+      console.error('Error loading employee materials:', error)
     }
   }
 
   // Add material to session
   const addSessionMaterial = async () => {
-    if (!selectedSessionForMaterials || !newSessionMaterial.materialId || !newSessionMaterial.quantity) {
+    // Validation for standalone mode (no session)
+    if (!selectedSessionForMaterials) {
+      if (!newSessionMaterial.materialId || !newSessionMaterial.quantity || !newSessionMaterial.project || !newSessionMaterial.date) {
+        showToast('Please fill in all required fields', 'error')
+        return
+      }
+      
+      // Create a standalone material entry (not tied to a session)
+      try {
+        const { data, error } = await supabase
+          .from('session_materials')
+          .insert([{
+            session_id: null, // Standalone material entry
+            material_id: newSessionMaterial.materialId,
+            quantity: parseFloat(newSessionMaterial.quantity),
+            notes: newSessionMaterial.notes,
+            project: newSessionMaterial.project,
+            created_by: user?.id,
+            created_at: new Date(newSessionMaterial.date).toISOString()
+          }])
+          .select(`
+            *,
+            materials (name, unit)
+          `)
+          .single()
+
+        if (error) {
+          showToast(`Failed to add material: ${error.message}`, 'error')
+          return
+        }
+
+        setSessionMaterials(prev => [...prev, data])
+        setNewSessionMaterial({ materialId: '', quantity: '', notes: '', project: '', date: new Date().toISOString().split('T')[0] })
+        showToast('Material added successfully!', 'success')
+        
+        // Reload materials for the tab
+        loadEmployeeMaterials()
+      } catch (err) {
+        console.error('Error adding material:', err)
+        showToast('Failed to add material', 'error')
+      }
+      return
+    }
+    
+    // Existing validation for session-based materials
+    if (!newSessionMaterial.materialId || !newSessionMaterial.quantity) {
       showToast('Please select material and enter quantity', 'error')
       return
     }
@@ -1300,7 +1428,7 @@ function App() {
       }
 
       setSessionMaterials(prev => [...prev, data])
-      setNewSessionMaterial({ materialId: '', quantity: '', notes: '' })
+      setNewSessionMaterial({ materialId: '', quantity: '', notes: '', project: '', date: new Date().toISOString().split('T')[0] })
       showToast('Material added to session!', 'success')
     } catch (err) {
       console.error('Error adding session material:', err)
@@ -1310,25 +1438,31 @@ function App() {
 
   // Delete material from session
   const deleteSessionMaterial = async (id: string) => {
-    if (!confirm('Remove this material from the session?')) return
+    showConfirmation(
+      'Remove Material',
+      'Remove this material from the session?',
+      async () => {
+        try {
+          const { error} = await supabase
+            .from('session_materials')
+            .delete()
+            .eq('id', id)
 
-    try {
-      const { error} = await supabase
-        .from('session_materials')
-        .delete()
-        .eq('id', id)
+          if (error) {
+            showToast(`Failed to remove material: ${error.message}`, 'error')
+            return
+          }
 
-      if (error) {
-        showToast(`Failed to remove material: ${error.message}`, 'error')
-        return
-      }
-
-      setSessionMaterials(prev => prev.filter(m => m.id !== id))
-      showToast('Material removed from session', 'success')
-    } catch (err) {
-      console.error('Error deleting session material:', err)
-      showToast('Failed to remove material', 'error')
-    }
+          setSessionMaterials(prev => prev.filter(m => m.id !== id))
+          showToast('Material removed from session', 'success')
+        } catch (err) {
+          console.error('Error deleting session material:', err)
+          showToast('Failed to remove material', 'error')
+        }
+      },
+      'Remove',
+      'Cancel'
+    )
   }
 
   // Project Tracking Functions
@@ -1367,6 +1501,20 @@ function App() {
           .in('session_id', sessionIds)
         
         materialsData = materials || []
+      }
+
+      // Also get standalone materials for this project (not tied to sessions)
+      const { data: standaloneMaterials } = await supabase
+        .from('session_materials')
+        .select(`
+          *,
+          materials (name, unit)
+        `)
+        .eq('project', project.name)
+        .is('session_id', null)
+      
+      if (standaloneMaterials) {
+        materialsData = [...materialsData, ...standaloneMaterials]
       }
 
       // Calculate hours by role
@@ -1505,7 +1653,7 @@ function App() {
     if (!isWorking) {
       // Start work - require role selection
       if (!selectedRole) {
-        alert('Please select your role before clocking in.')
+        showToast('Please select your role before clocking in', 'warning')
         return
       }
       setIsWorking(true)
@@ -1516,6 +1664,13 @@ function App() {
       // Transfer to new location/role - end current session and start new one
       if (workStartTime && currentRole) {
         const duration = calculateDuration(workStartTime, now)
+        
+        // Check minimum duration (1 minute)
+        if (duration < 1) {
+          showToast('You must work for at least 1 minute before transferring', 'warning')
+          return
+        }
+        
         const sessionData = {
           project: currentLocation === 'The Shop' ? 'The Shop' : 
             currentLocation === 'Lunch' ? 'Lunch' :
@@ -1524,7 +1679,8 @@ function App() {
           role: currentRole,
           startTime: workStartTime,
           endTime: now,
-          duration
+          duration,
+          notes: sessionNotes
         }
         
         // Save to local state
@@ -1535,16 +1691,24 @@ function App() {
       }
       // Start new session
       if (!selectedRole) {
-        alert('Please select your role before transferring.')
+        showToast('Please select your role before transferring', 'warning')
         return
       }
       setCurrentLocation(newLocation)
       setCurrentRole(selectedRole)
       setWorkStartTime(now)
+      setSessionNotes('') // Clear notes for new session
     } else {
       // End work day
       if (workStartTime && currentRole) {
         const duration = calculateDuration(workStartTime, now)
+        
+        // Check minimum duration (1 minute)
+        if (duration < 1) {
+          showToast('You must work for at least 1 minute before clocking out', 'warning')
+          return
+        }
+        
         const sessionData = {
           project: currentLocation === 'The Shop' ? 'The Shop' : 
             currentLocation === 'Lunch' ? 'Lunch' :
@@ -1553,7 +1717,8 @@ function App() {
           role: currentRole,
           startTime: workStartTime,
           endTime: now,
-          duration
+          duration,
+          notes: sessionNotes
         }
         
         // Save to local state
@@ -1566,6 +1731,7 @@ function App() {
       setCurrentLocation(null)
       setCurrentRole(null)
       setWorkStartTime(null)
+      setSessionNotes('') // Clear notes when clocking out
     }
   }
 
@@ -1625,6 +1791,20 @@ function App() {
                   ))}
                 </select>
               </div>
+
+              {isWorking && (
+                <div className="notes-input-container">
+                  <label>Session Notes (Optional):</label>
+                  <textarea
+                    value={sessionNotes}
+                    onChange={(e) => setSessionNotes(e.target.value)}
+                    placeholder="Add notes about this work session... (e.g., tasks completed, issues encountered, etc.)"
+                    className="session-notes-textarea"
+                    rows={3}
+                  />
+                  <p className="notes-hint">💡 Notes will be saved when you transfer or clock out</p>
+                </div>
+              )}
 
               <div className="combined-status">
                 {currentLocation ? (
@@ -1704,8 +1884,6 @@ function App() {
         )
       case 'projects':
         const activeProjects = projects.filter(p => p.status === 'active')
-        const completedProjects = projects.filter(p => p.status === 'completed')
-        const displayProjects = showCompletedProjects ? completedProjects : activeProjects
         
         return (
           <div className="tab-content">
@@ -1713,86 +1891,54 @@ function App() {
               <div className="live-projects-header">
                 <h2>Live Project Tracker</h2>
                 <p className="tracker-subtitle">Real-time hours and materials by project</p>
-                
-                {/* Toggle between active and completed */}
-                <div className="project-view-toggle">
-                  <button 
-                    className={`toggle-btn ${!showCompletedProjects ? 'active' : ''}`}
-                    onClick={() => setShowCompletedProjects(false)}
-                  >
-                    Active Projects ({activeProjects.length})
-                  </button>
-                  <button 
-                    className={`toggle-btn ${showCompletedProjects ? 'active' : ''}`}
-                    onClick={() => setShowCompletedProjects(true)}
-                  >
-                    Completed ({completedProjects.length})
-                  </button>
-                </div>
               </div>
 
-              {displayProjects.length === 0 ? (
+              {activeProjects.length === 0 ? (
                 <div className="no-active-projects">
-                  <p>No {showCompletedProjects ? 'completed' : 'active'} projects. {!showCompletedProjects && 'Start a project to track hours and materials live!'}</p>
-                  {!showCompletedProjects && (
-                    <button 
-                      className="manage-projects-btn"
-                      onClick={() => setShowAddProject(true)}
-                    >
-                      + Create Project
-                    </button>
-                  )}
+                  <p>No active projects. Start a project to track hours and materials live!</p>
+                  <button 
+                    className="manage-projects-btn"
+                    onClick={() => setShowAddProject(true)}
+                  >
+                    + Create Project
+                  </button>
                 </div>
               ) : (
                 <div className="live-projects-grid">
-                  {displayProjects.map(project => (
+                  {activeProjects.map(project => (
                     <div key={project.id} className="live-project-card">
                       <div className="live-project-header">
                         <div className="project-title-area">
                           <h3>{project.name}</h3>
                           <span className="project-type-badge">{project.type}</span>
-                          {showCompletedProjects && (
-                            <span className="completed-badge">✓ Completed</span>
-                          )}
                         </div>
                         <button
                           className="view-stats-btn"
                           onClick={() => loadProjectStats(project)}
                         >
-                          View {showCompletedProjects ? 'Final' : 'Live'} Stats
+                          View Live Stats
                         </button>
                       </div>
                       <div className="project-quick-info">
                         <p className="project-location">{project.location}</p>
                       </div>
-                      {!showCompletedProjects ? (
-                        <div className="project-actions-footer">
-                          <button
-                            className="mark-complete-btn"
-                            onClick={() => {
-                              setProjectToComplete(project)
-                              setShowCompleteConfirmation(true)
-                            }}
-                          >
-                            Mark Complete
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="project-actions-footer">
-                          <button
-                            className="reactivate-btn"
-                            onClick={() => reactivateProject(project)}
-                          >
-                            Reactivate Project
-                          </button>
-                        </div>
-                      )}
+                      <div className="project-actions-footer">
+                        <button
+                          className="mark-complete-btn"
+                          onClick={() => {
+                            setProjectToComplete(project)
+                            setShowCompleteConfirmation(true)
+                          }}
+                        >
+                          Mark Complete
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
 
-              {!showAddProject && displayProjects.length > 0 && (
+              {!showAddProject && activeProjects.length > 0 && (
                 <div className="manage-projects-section">
                   <button 
                     className="manage-projects-btn"
@@ -1948,6 +2094,11 @@ function App() {
                                 <div className="session-project-role">
                                   <strong>{session.project}</strong> • {session.role}
                                 </div>
+                                {session.notes && (
+                                  <div className="session-notes-display">
+                                    📝 {session.notes}
+                                  </div>
+                                )}
                                 <div className="session-duration-status">
                                   <span className="session-duration">{Math.floor((session.duration || 0) / 60)}h {(session.duration || 0) % 60}m</span>
                                   <span className={`session-status-badge ${session.status}`}>
@@ -1958,20 +2109,9 @@ function App() {
                                   </span>
                                 </div>
                                 
-                                {/* Edit/Delete/Materials buttons only for draft sessions */}
+                                {/* Edit/Delete buttons only for draft sessions */}
                                 {session.status === 'draft' && (
                                   <div className="session-actions">
-                                    <button
-                                      className="materials-session-btn"
-                                      onClick={() => {
-                                        setSelectedSessionForMaterials(session)
-                                        loadSessionMaterials(session.id)
-                                        setShowAddSessionMaterial(true)
-                                      }}
-                                      title="Add Materials"
-                                    >
-                                      <Package size={14} /> Materials
-                                    </button>
                                     <button
                                       className="edit-session-btn"
                                       onClick={() => {
@@ -2016,9 +2156,9 @@ function App() {
                   
                   {/* Show status badges */}
                   <div className="status-summary">
-                    {weeklySessions.filter(s => s.status === 'draft').length > 0 && (
+                    {weeklySessions.filter(s => s.status === 'draft' && s.duration && s.endTime).length > 0 && (
                       <div className="status-badge draft">
-                        {weeklySessions.filter(s => s.status === 'draft').length} sessions pending submission
+                        {weeklySessions.filter(s => s.status === 'draft' && s.duration && s.endTime).length} sessions pending submission
                       </div>
                     )}
                     {weeklySessions.filter(s => s.status === 'submitted').length > 0 && (
@@ -2039,7 +2179,7 @@ function App() {
                   </div>
                   
                   {/* Submission form - only show if there are draft sessions */}
-                  {weeklySessions.filter(s => s.status === 'draft').length > 0 && (
+                  {weeklySessions.filter(s => s.status === 'draft' && s.duration && s.endTime).length > 0 && (
                     <div className="submission-form">
                       <p className="submission-instructions">
                         Review your hours for the entire week above, then submit your timesheet for admin approval.
@@ -2317,136 +2457,104 @@ function App() {
             </div>
           </div>
         )
+      case 'my-materials':
+        // Employee Materials Tracker
+        return (
+          <div className="tab-content">
+            <div className="materials-tracker-container">
+              <div className="materials-tracker-header">
+                <h2>My Materials</h2>
+                <button
+                  className="add-material-entry-btn"
+                  onClick={() => setShowAddSessionMaterial(true)}
+                >
+                  <Plus size={20} /> Add Materials Used
+                </button>
+              </div>
+
+              <div className="materials-tracker-content">
+                {sessionMaterials.length === 0 ? (
+                  <div className="empty-state">
+                    <Package size={48} />
+                    <p>No materials recorded yet</p>
+                    <p className="empty-state-subtitle">Track materials you use on projects</p>
+                  </div>
+                ) : (
+                  <div className="materials-entries-list">
+                    {sessionMaterials.map((material) => (
+                      <div key={material.id} className="material-entry-card">
+                        <div className="material-entry-header">
+                          <h3>{material.materials?.name || 'Unknown Material'}</h3>
+                          <span className="material-quantity">{material.quantity} {material.materials?.unit || ''}</span>
+                        </div>
+                        <div className="material-entry-details">
+                          {material.project && <p><strong>Project:</strong> {material.project}</p>}
+                          <p><strong>Date:</strong> {new Date(material.created_at).toLocaleDateString()}</p>
+                          {material.notes && <p><strong>Notes:</strong> {material.notes}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
       case 'history':
-        // Admin-only History tab - Project breakdown view
+        // Admin-only History tab - Show completed projects
         if (userRole !== 'admin') {
           return null // History tab is admin-only
         }
 
-        // Load historical sessions from database (will implement loading function)
-        // For now, using empty array - will add data loading
-        const historicalSessions: any[] = []
-        
-        // Group by project
-        const projectBreakdowns = historicalSessions.reduce((acc: any, session: any) => {
-          const projectName = session.project
-          if (!acc[projectName]) {
-            acc[projectName] = {
-              projectName,
-              totalMinutes: 0,
-              sessionCount: 0,
-              employees: {} as Record<string, number>, // employee name -> minutes
-              equipment: {} as Record<string, number>  // role/equipment -> minutes
-            }
-          }
-          
-          acc[projectName].totalMinutes += session.duration || 0
-          acc[projectName].sessionCount += 1
-          
-          // Track employee hours
-          const employeeName = session.userName || 'Unknown'
-          acc[projectName].employees[employeeName] = (acc[projectName].employees[employeeName] || 0) + (session.duration || 0)
-          
-          // Track equipment/role hours
-          const equipment = session.role
-          acc[projectName].equipment[equipment] = (acc[projectName].equipment[equipment] || 0) + (session.duration || 0)
-          
-          return acc
-        }, {})
+        const completedProjects = projects.filter(p => p.status === 'completed')
 
         return (
           <div className="tab-content">
-            <div className="history-container">
-              <h2>Project History</h2>
-              <p style={{textAlign: 'center', color: '#666', marginBottom: '2rem'}}>
-                View completed projects with employee and equipment breakdowns
-              </p>
-              
-              {/* Time Range Filter */}
-              <div className="history-filter">
-                <label>Time Range:</label>
-                <select 
-                  value={historyFilter} 
-                  onChange={(e) => setHistoryFilter(e.target.value)}
-                  className="dropdown"
-                >
-                  <option value="this-week">This Week</option>
-                  <option value="last-week">Last Week</option>
-                  <option value="this-month">This Month</option>
-                  <option value="last-month">Last Month</option>
-                  <option value="all-time">All Time</option>
-                </select>
+            <div className="live-projects-container">
+              <div className="live-projects-header">
+                <h2>Completed Projects</h2>
+                <p className="tracker-subtitle">View final stats and reactivate projects if needed</p>
               </div>
-              
-              {Object.keys(projectBreakdowns).length > 0 ? (
-                <div className="project-history-list">
-                  {Object.values(projectBreakdowns).map((project: any) => {
-                    const totalHours = Math.floor(project.totalMinutes / 60)
-                    const totalMinutes = project.totalMinutes % 60
-                    
-                    return (
-                      <div key={project.projectName} className="project-history-card">
-                        <div className="project-history-header">
-                          <h3>{project.projectName}</h3>
-                          <div className="project-total-hours">
-                            {totalHours}h {totalMinutes}m
-                          </div>
-                        </div>
-                        
-                        <div className="project-history-meta">
-                          <span className="session-count">{project.sessionCount} sessions</span>
-                        </div>
-                        
-                        <div className="project-history-content">
-                          {/* Employee Breakdown */}
-                          <div className="breakdown-section">
-                            <h4>By Employee:</h4>
-                            <div className="breakdown-items">
-                              {Object.entries(project.employees)
-                                .sort(([, a], [, b]) => (b as number) - (a as number))
-                                .map(([employee, minutes]: [string, any]) => {
-                                  const hours = Math.floor(minutes / 60)
-                                  const mins = minutes % 60
-                                  return (
-                                    <div key={employee} className="breakdown-item-row">
-                                      <span className="breakdown-label">{employee}</span>
-                                      <span className="breakdown-value">{hours}h {mins}m</span>
-                                    </div>
-                                  )
-                                })}
-                            </div>
-                          </div>
-                          
-                          {/* Equipment Breakdown */}
-                          <div className="breakdown-section">
-                            <h4>By Equipment/Role:</h4>
-                            <div className="breakdown-items">
-                              {Object.entries(project.equipment)
-                                .sort(([, a], [, b]) => (b as number) - (a as number))
-                                .map(([equipment, minutes]: [string, any]) => {
-                                  const hours = Math.floor(minutes / 60)
-                                  const mins = minutes % 60
-                                  return (
-                                    <div key={equipment} className="breakdown-item-row">
-                                      <span className="breakdown-label">{equipment}</span>
-                                      <span className="breakdown-value">{hours}h {mins}m</span>
-                                    </div>
-                                  )
-                                })}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
+
+              {completedProjects.length === 0 ? (
+                <div className="no-active-projects">
+                  <p>No completed projects yet.</p>
                 </div>
               ) : (
-                <div className="empty-history">
-                  <div className="empty-message">
-                    <h3>No project history found</h3>
-                    <p>No completed projects found for the selected time range.</p>
-                    <p>Sessions will appear here once employees submit and admins approve timesheets.</p>
-                  </div>
+                <div className="live-projects-grid">
+                  {completedProjects.map(project => (
+                    <div key={project.id} className="live-project-card">
+                      <div className="live-project-header">
+                        <div className="project-title-area">
+                          <h3>{project.name}</h3>
+                          <span className="project-type-badge">{project.type}</span>
+                          <span className="completed-badge">✓ Completed</span>
+                        </div>
+                        <button
+                          className="view-stats-btn"
+                          onClick={() => loadProjectStats(project)}
+                        >
+                          View Final Stats
+                        </button>
+                      </div>
+                      <div className="project-quick-info">
+                        <p className="project-location">{project.location}</p>
+                        {project.completed_at && (
+                          <p className="completion-date">
+                            Completed: {new Date(project.completed_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                      <div className="project-actions-footer">
+                        <button
+                          className="reactivate-btn"
+                          onClick={() => reactivateProject(project)}
+                        >
+                          Reactivate Project
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -2932,6 +3040,13 @@ function App() {
               <BarChart3 size={24} />
               <span>My Hours</span>
             </button>
+            <button 
+              className={`nav-item ${activeTab === 'my-materials' ? 'active' : ''}`}
+              onClick={() => setActiveTab('my-materials')}
+            >
+              <Package size={24} />
+              <span>Materials</span>
+            </button>
           </>
         )}
       </nav>
@@ -3194,6 +3309,17 @@ function App() {
                 <label>Duration: {Math.floor(editingSession.duration / 60)}h {editingSession.duration % 60}m</label>
               </div>
 
+              <div className="form-group">
+                <label>Notes (Optional):</label>
+                <textarea
+                  value={editingSession.notes || ''}
+                  onChange={(e) => setEditingSession({...editingSession, notes: e.target.value})}
+                  placeholder="Add notes about this work session..."
+                  className="session-notes-textarea"
+                  rows={3}
+                />
+              </div>
+
               <div className="modal-actions">
                 <button
                   className="save-btn"
@@ -3202,7 +3328,8 @@ function App() {
                     role: editingSession.role,
                     start_time: editingSession.start_time,
                     end_time: editingSession.end_time,
-                    duration: editingSession.duration
+                    duration: editingSession.duration,
+                    notes: editingSession.notes
                   })}
                 >
                   Save Changes
@@ -3311,20 +3438,51 @@ function App() {
       )}
 
       {/* Session Materials Modal */}
-      {showAddSessionMaterial && selectedSessionForMaterials && (
+      {showAddSessionMaterial && (
         <div className="modal-overlay" onClick={() => {
           setShowAddSessionMaterial(false)
           setSelectedSessionForMaterials(null)
           setSessionMaterials([])
-          setNewSessionMaterial({ materialId: '', quantity: '', notes: '' })
+          setNewSessionMaterial({ materialId: '', quantity: '', notes: '', project: '', date: new Date().toISOString().split('T')[0] })
         }}>
           <div className="modal-content wide-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Materials for Session</h3>
-            <div className="session-info-box">
-              <div><strong>Project:</strong> {selectedSessionForMaterials.project}</div>
-              <div><strong>Role:</strong> {selectedSessionForMaterials.role}</div>
-              <div><strong>Date:</strong> {selectedSessionForMaterials.startTime.toLocaleDateString()}</div>
-            </div>
+            <h3>{selectedSessionForMaterials ? 'Materials for Session' : 'Add Materials Used'}</h3>
+            
+            {selectedSessionForMaterials ? (
+              <div className="session-info-box">
+                <div><strong>Project:</strong> {selectedSessionForMaterials.project}</div>
+                <div><strong>Role:</strong> {selectedSessionForMaterials.role}</div>
+                <div><strong>Date:</strong> {selectedSessionForMaterials.startTime.toLocaleDateString()}</div>
+              </div>
+            ) : (
+              <div className="standalone-material-selectors">
+                <div className="form-group">
+                  <label>Date:</label>
+                  <input
+                    type="date"
+                    value={newSessionMaterial.date}
+                    onChange={(e) => setNewSessionMaterial({...newSessionMaterial, date: e.target.value})}
+                    max={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Project:</label>
+                  <select
+                    value={newSessionMaterial.project}
+                    onChange={(e) => setNewSessionMaterial({...newSessionMaterial, project: e.target.value})}
+                  >
+                    <option value="">Select project...</option>
+                    <option value="The Shop">The Shop</option>
+                    <option value="Lunch">Lunch</option>
+                    {projects
+                      .filter(p => p.status !== 'completed')
+                      .map(p => (
+                        <option key={p.id} value={p.name}>{p.name}</option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+            )}
 
             {/* Existing materials for this session */}
             {sessionMaterials.length > 0 && (
@@ -3409,10 +3567,37 @@ function App() {
                   setShowAddSessionMaterial(false)
                   setSelectedSessionForMaterials(null)
                   setSessionMaterials([])
-                  setNewSessionMaterial({ materialId: '', quantity: '', notes: '' })
+                  setNewSessionMaterial({ materialId: '', quantity: '', notes: '', project: '', date: new Date().toISOString().split('T')[0] })
                 }}
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmationModal.show && (
+        <div className="modal-overlay" onClick={() => setConfirmationModal({ ...confirmationModal, show: false })}>
+          <div className="confirmation-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{confirmationModal.title}</h3>
+            <p>{confirmationModal.message}</p>
+            <div className="modal-actions">
+              <button
+                className="confirm-btn"
+                onClick={() => {
+                  confirmationModal.onConfirm()
+                  setConfirmationModal({ ...confirmationModal, show: false })
+                }}
+              >
+                {confirmationModal.confirmText}
+              </button>
+              <button
+                className="cancel-btn"
+                onClick={() => setConfirmationModal({ ...confirmationModal, show: false })}
+              >
+                {confirmationModal.cancelText}
               </button>
             </div>
           </div>
