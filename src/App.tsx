@@ -623,6 +623,49 @@ function App() {
     return () => clearInterval(timer)
   }, [])
   
+  // Persist and restore active work session
+  useEffect(() => {
+    if (isWorking && workStartTime && currentLocation && currentRole) {
+      // Save active session to localStorage
+      const activeSession = {
+        isWorking: true,
+        workStartTime: workStartTime.toISOString(),
+        currentLocation,
+        currentRole,
+        sessionNotes
+      }
+      localStorage.setItem('activeWorkSession', JSON.stringify(activeSession))
+      console.log('💾 Saved active session to localStorage:', activeSession)
+    }
+    // Note: Don't automatically clear here - let the clock out handle it
+  }, [isWorking, workStartTime, currentLocation, currentRole, sessionNotes])
+
+  // Restore active session on page load
+  useEffect(() => {
+    console.log('🔄 Checking for saved session...')
+    const savedSession = localStorage.getItem('activeWorkSession')
+    console.log('Saved session data:', savedSession)
+    if (savedSession) {
+      try {
+        const session = JSON.parse(savedSession)
+        console.log('Parsed session:', session)
+        if (session.isWorking) {
+          setIsWorking(true)
+          setWorkStartTime(new Date(session.workStartTime))
+          setCurrentLocation(session.currentLocation)
+          setCurrentRole(session.currentRole)
+          setSessionNotes(session.sessionNotes || '')
+          console.log('✅ Restored active work session from localStorage')
+        }
+      } catch (error) {
+        console.error('❌ Error restoring session:', error)
+        localStorage.removeItem('activeWorkSession')
+      }
+    } else {
+      console.log('ℹ️ No saved session found')
+    }
+  }, []) // Run once on mount
+  
 
 
   const getLocationFromProject = (projectName: string) => {
@@ -1698,41 +1741,8 @@ function App() {
       setCurrentRole(selectedRole)
       setWorkStartTime(now)
       setSessionNotes('') // Clear notes for new session
-    } else {
-      // End work day
-      if (workStartTime && currentRole) {
-        const duration = calculateDuration(workStartTime, now)
-        
-        // Check minimum duration (1 minute)
-        if (duration < 1) {
-          showToast('You must work for at least 1 minute before clocking out', 'warning')
-          return
-        }
-        
-        const sessionData = {
-          project: currentLocation === 'The Shop' ? 'The Shop' : 
-            currentLocation === 'Lunch' ? 'Lunch' :
-            projects.find(p => p.location === currentLocation)?.name || 'Unknown',
-          location: currentLocation!,
-          role: currentRole,
-          startTime: workStartTime,
-          endTime: now,
-          duration,
-          notes: sessionNotes
-        }
-        
-        // Save to local state
-        setTodaysSessions(prev => [...prev, sessionData])
-        
-        // Save to database
-        await saveWorkSession(sessionData)
-      }
-      setIsWorking(false)
-      setCurrentLocation(null)
-      setCurrentRole(null)
-      setWorkStartTime(null)
-      setSessionNotes('') // Clear notes when clocking out
     }
+    // Note: "End Work Day" is now handled by a separate button
   }
 
   const renderTabContent = () => {
@@ -1828,17 +1838,69 @@ function App() {
               
               <div className="work-actions">
                 <div className="action-container">
-                  <button 
-                    className="main-action-btn"
-                    onClick={handleClockAction}
-                  >
-                    {!isWorking 
-                      ? 'Clock In' 
-                      : (getLocationFromProject(selectedProject) !== currentLocation || selectedRole !== currentRole)
-                        ? `Transfer to ${selectedProject}${selectedRole ? ` (${selectedRole})` : ''}`
-                        : 'End Work Day'
-                    }
-                  </button>
+                  {!isWorking ? (
+                    <button 
+                      className="main-action-btn"
+                      onClick={handleClockAction}
+                    >
+                      Clock In
+                    </button>
+                  ) : (
+                    <>
+                      {(getLocationFromProject(selectedProject) !== currentLocation || selectedRole !== currentRole) && (
+                        <button 
+                          className="main-action-btn transfer-btn"
+                          onClick={handleClockAction}
+                        >
+                          Transfer to {selectedProject}{selectedRole ? ` (${selectedRole})` : ''}
+                        </button>
+                      )}
+                      <button 
+                        className="main-action-btn end-day-btn"
+                        onClick={async () => {
+                          const now = new Date()
+                          if (workStartTime && currentRole) {
+                            const duration = calculateDuration(workStartTime, now)
+                            
+                            // Check minimum duration (1 minute)
+                            if (duration < 1) {
+                              showToast('You must work for at least 1 minute before clocking out', 'warning')
+                              return
+                            }
+                            
+                            const sessionData = {
+                              project: currentLocation === 'The Shop' ? 'The Shop' : 
+                                currentLocation === 'Lunch' ? 'Lunch' :
+                                projects.find(p => p.location === currentLocation)?.name || 'Unknown',
+                              location: currentLocation!,
+                              role: currentRole,
+                              startTime: workStartTime,
+                              endTime: now,
+                              duration,
+                              notes: sessionNotes
+                            }
+                            
+                            // Save to local state
+                            setTodaysSessions(prev => [...prev, sessionData])
+                            
+                            // Save to database
+                            await saveWorkSession(sessionData)
+                          }
+                          // Clear active session from localStorage
+                          localStorage.removeItem('activeWorkSession')
+                          console.log('🗑️ Cleared active session - clocked out')
+                          
+                          setIsWorking(false)
+                          setCurrentLocation(null)
+                          setCurrentRole(null)
+                          setWorkStartTime(null)
+                          setSessionNotes('')
+                        }}
+                      >
+                        End Work Day
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 

@@ -297,6 +297,30 @@ body {
   box-shadow: 0 8px 25px rgba(34, 197, 94, 0.3);
 }
 
+.action-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.transfer-btn {
+  background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+}
+
+.transfer-btn:hover {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3) !important;
+}
+
+.end-day-btn {
+  background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+}
+
+.end-day-btn:hover {
+  background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+  box-shadow: 0 8px 25px rgba(239, 68, 68, 0.3) !important;
+}
+
 .travel-controls {
   margin-top: 1rem;
 }
