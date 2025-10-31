@@ -338,18 +338,24 @@ function App() {
 
   // Sign out function
   const handleSignOut = async () => {
-    // Clear active work session from localStorage before signing out
-    localStorage.removeItem('activeWorkSession')
-    
     try {
+      // Clear active work session from localStorage
+      localStorage.removeItem('activeWorkSession')
+      
+      // Clear all Supabase auth data from storage
+      localStorage.removeItem('sb-eujcsdpckcaqayabtnsh-auth-token')
+      sessionStorage.clear()
+      
       // Try to sign out from Supabase
       await supabase.auth.signOut()
     } catch (err) {
       console.warn('Supabase signOut error (non-critical):', err)
     }
     
-    // Manually clear the session and reload to ensure logout
-    window.location.reload()
+    // Wait a moment to ensure session is cleared, then redirect to login
+    setTimeout(() => {
+      window.location.href = window.location.origin
+    }, 100)
   }
 
   // Shared function to load all projects
