@@ -89,8 +89,9 @@ function App() {
     status: 'pending' as 'active' | 'pending'
   })
   
-  // Edit project state (currently unused - kept for future features)
-  // const [editingProject, setEditingProject] = useState<Project | null>(null)
+  // Edit project state
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
+  const [showEditProject, setShowEditProject] = useState(false)
   
   // Toast notification state
   const [toast, setToast] = useState<{
@@ -522,6 +523,46 @@ function App() {
     } catch (err) {
       console.error('Unexpected error adding project:', err)
       showToast(`Failed to add project: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error')
+    }
+  }
+
+  const updateProject = async () => {
+    if (!editingProject) return
+
+    if (!editingProject.name.trim() || !editingProject.type.trim() || !editingProject.location.trim()) {
+      showToast('Please fill in all required fields (Name, Type, and Location)', 'error')
+      return
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .update({
+          name: editingProject.name.trim(),
+          type: editingProject.type.trim(),
+          location: editingProject.location.trim(),
+          status: editingProject.status
+        })
+        .eq('id', editingProject.id)
+        .select()
+        .single()
+
+      if (error) {
+        showToast(`Failed to update project: ${error.message}`, 'error')
+        return
+      }
+
+      // Update local state
+      setProjects(prev => prev.map(p => p.id === data.id ? data : p))
+      
+      // Close modal
+      setShowEditProject(false)
+      setEditingProject(null)
+      
+      showToast('Project updated successfully!', 'success')
+      
+    } catch (err) {
+      showToast(`Failed to update project: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error')
     }
   }
 
@@ -1998,6 +2039,17 @@ function App() {
                       </div>
                       <div className="project-actions-footer">
                         <button
+                          className="icon-btn"
+                          onClick={() => {
+                            console.log('Edit button clicked for project:', project)
+                            setEditingProject(project)
+                            setShowEditProject(true)
+                          }}
+                          title="Edit Project"
+                        >
+                          <Edit2 size={18} />
+                        </button>
+                        <button
                           className="mark-complete-btn"
                           onClick={() => {
                             setProjectToComplete(project)
@@ -2080,6 +2132,66 @@ function App() {
                     >
                       Cancel
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Edit Project Modal */}
+              {showEditProject && editingProject && (
+                <div className="modal-overlay" onClick={() => setShowEditProject(false)}>
+                  <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                    <h3>Edit Project</h3>
+                    <div className="form-group">
+                      <label>Project Name *</label>
+                      <input
+                        type="text"
+                        value={editingProject.name}
+                        onChange={(e) => setEditingProject({...editingProject, name: e.target.value})}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Project Type *</label>
+                      <select
+                        value={editingProject.type}
+                        onChange={(e) => setEditingProject({...editingProject, type: e.target.value})}
+                      >
+                        <option value="Landscape Installation">Landscape Installation</option>
+                        <option value="Weekly Maintenance">Weekly Maintenance</option>
+                        <option value="Commercial Maintenance">Commercial Maintenance</option>
+                        <option value="Hardscaping">Hardscaping</option>
+                        <option value="Irrigation">Irrigation</option>
+                        <option value="Tree Service">Tree Service</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Location/Address *</label>
+                      <input
+                        type="text"
+                        value={editingProject.location}
+                        onChange={(e) => setEditingProject({...editingProject, location: e.target.value})}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Status</label>
+                      <select
+                        value={editingProject.status}
+                        onChange={(e) => setEditingProject({...editingProject, status: e.target.value as 'active' | 'pending'})}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="active">Active</option>
+                      </select>
+                    </div>
+                    <div className="modal-actions">
+                      <button className="btn-secondary" onClick={() => {
+                        setShowEditProject(false)
+                        setEditingProject(null)
+                      }}>
+                        Cancel
+                      </button>
+                      <button className="btn-primary" onClick={updateProject}>
+                        Save Changes
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
