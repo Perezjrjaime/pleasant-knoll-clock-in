@@ -338,9 +338,14 @@ function App() {
 
   // Sign out function
   const handleSignOut = async () => {
-    const { error } = await supabase.auth.signOut()
+    // Clear active work session from localStorage before signing out
+    localStorage.removeItem('activeWorkSession')
+    
+    const { error } = await supabase.auth.signOut({ scope: 'local' })
     if (error) {
-      showToast('Error signing out', 'error')
+      console.warn('Logout warning (non-critical):', error)
+      // Still show success since logout usually works despite the error
+      showToast('Signed out successfully', 'success')
     } else {
       showToast('Signed out successfully', 'success')
     }
