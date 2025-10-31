@@ -341,14 +341,15 @@ function App() {
     // Clear active work session from localStorage before signing out
     localStorage.removeItem('activeWorkSession')
     
-    const { error } = await supabase.auth.signOut({ scope: 'local' })
-    if (error) {
-      console.warn('Logout warning (non-critical):', error)
-      // Still show success since logout usually works despite the error
-      showToast('Signed out successfully', 'success')
-    } else {
-      showToast('Signed out successfully', 'success')
+    try {
+      // Try to sign out from Supabase
+      await supabase.auth.signOut()
+    } catch (err) {
+      console.warn('Supabase signOut error (non-critical):', err)
     }
+    
+    // Manually clear the session and reload to ensure logout
+    window.location.reload()
   }
 
   // Shared function to load all projects
