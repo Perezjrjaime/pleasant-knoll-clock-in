@@ -4949,3 +4949,121 @@ body {
   background: #2563eb;
 }
 
+/* ============================================================
+   ROLES MANAGEMENT STYLES
+   ============================================================ */
+
+.roles-container {
+  padding: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.roles-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.roles-header h2 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.roles-section {
+  margin-bottom: 2rem;
+}
+
+.roles-section h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 1rem;
+}
+
+.roles-list {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+.role-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  transition: all 0.2s;
+}
+
+.role-card:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border-color: #3b82f6;
+}
+
+.role-card.inactive {
+  opacity: 0.6;
+  background: #f9fafb;
+}
+
+.role-info {
+  flex: 1;
+}
+
+.role-name {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+}
+
+.role-detail {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+.role-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-style: italic;
+}
+
+@media (max-width: 768px) {
+  .roles-container {
+    padding: 1rem;
+  }
+
+  .roles-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .roles-header h2 {
+    font-size: 1.5rem;
+  }
+
+  .roles-list {
+    grid-template-columns: 1fr;
+  }
+
+  .role-card {
+    padding: 1rem;
+  }
+}
+

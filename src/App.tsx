@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield, UserCheck, UserX, Plus, Package, Check, X } from 'lucide-react'
+import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield, UserCheck, UserX, Plus, Package, Check, X, Users } from 'lucide-react'
 import { supabase, type Project, type UserRole, supabaseOperations } from './lib/supabase'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
 import AccessDenied from './components/AccessDenied'
 import './App.css'
 
-type TabType = 'clock' | 'projects' | 'hours' | 'my-materials' | 'history' | 'admin' | 'materials'
+type TabType = 'clock' | 'projects' | 'hours' | 'my-materials' | 'history' | 'admin' | 'materials' | 'roles'
 
 function App() {
   // Initialize activeTab from localStorage, or default to 'clock'
@@ -54,31 +54,24 @@ function App() {
   const [lastModificationTime, setLastModificationTime] = useState<number>(0)
   
   // Common landscaping roles
-  const commonRoles = [
-    'Skid steer',
-    'Truck',
-    'Labor',
-    'Tractor',
-    'Straw blower',
-    'Hydromulcher',
-    'Mini skid steer',
-    'Mini excavator',
-    'Compactor',
-    'Chain Saw Labor',
-    'Wood Chipper',
-    'Snow Pusher',
-    'Snow Blower',
-    'Plow Truck',
-    'Salter',
-    'Large Post Driver'
-  ]
-  
   // Base locations (always available)
 
   
   // Projects (loaded from database)
   const [projects, setProjects] = useState<Project[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  
+  // Roles management state
+  const [roles, setRoles] = useState<any[]>([])
+  const [showAddRole, setShowAddRole] = useState(false)
+  const [newRole, setNewRole] = useState({
+    role_name: '',
+    cost_code: '',
+    hourly_rate: '',
+    status: 'active'
+  })
+  const [editingRole, setEditingRole] = useState<any | null>(null)
+  const [showEditRole, setShowEditRole] = useState(false)
   
   // Project management state
   const [showAddProject, setShowAddProject] = useState(false)
@@ -393,10 +386,145 @@ function App() {
     }
   }
 
+  // Load all roles from database
+  const loadRoles = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('roles')
+        .select('*')
+        .order('role_name')
+      
+      if (error) {
+        console.error('Error loading roles:', error)
+        showToast('Failed to load roles', 'error')
+        return
+      }
+      
+      setRoles(data || [])
+    } catch (error) {
+      console.error('Error loading roles:', error)
+      showToast('An error occurred while loading roles', 'error')
+    }
+  }
+
+  // Add new role
+  const addRole = async () => {
+    if (!newRole.role_name.trim()) {
+      showToast('Please enter a role name', 'error')
+      return
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('roles')
+        .insert([{
+          role_name: newRole.role_name,
+          cost_code: newRole.cost_code || null,
+          hourly_rate: newRole.hourly_rate ? parseFloat(newRole.hourly_rate) : null,
+          status: newRole.status
+        }])
+        .select()
+        .single()
+
+      if (error) {
+        if (error.code === '23505') {
+          showToast('A role with this name already exists', 'error')
+        } else {
+          showToast(`Failed to add role: ${error.message}`, 'error')
+        }
+        return
+      }
+
+      setRoles(prev => [...prev, data])
+      setNewRole({ role_name: '', cost_code: '', hourly_rate: '', status: 'active' })
+      setShowAddRole(false)
+      showToast('Role added successfully!', 'success')
+    } catch (err) {
+      console.error('Error adding role:', err)
+      showToast('Failed to add role', 'error')
+    }
+  }
+
+  // Update existing role
+  const updateRole = async () => {
+    if (!editingRole || !editingRole.role_name.trim()) {
+      showToast('Please enter a role name', 'error')
+      return
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('roles')
+        .update({
+          role_name: editingRole.role_name,
+          cost_code: editingRole.cost_code || null,
+          hourly_rate: editingRole.hourly_rate ? parseFloat(editingRole.hourly_rate) : null,
+          status: editingRole.status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', editingRole.id)
+        .select()
+        .single()
+
+      if (error) {
+        if (error.code === '23505') {
+          showToast('A role with this name already exists', 'error')
+        } else {
+          showToast(`Failed to update role: ${error.message}`, 'error')
+        }
+        return
+      }
+
+      setRoles(prev => prev.map(r => r.id === data.id ? data : r))
+      setEditingRole(null)
+      setShowEditRole(false)
+      showToast('Role updated successfully!', 'success')
+    } catch (err) {
+      console.error('Error updating role:', err)
+      showToast('Failed to update role', 'error')
+    }
+  }
+
+  // Delete role
+  const deleteRole = async (roleId: string) => {
+    showConfirmation(
+      'Delete Role',
+      'Are you sure you want to delete this role? This action cannot be undone.',
+      async () => {
+        try {
+          const { error } = await supabase
+            .from('roles')
+            .delete()
+            .eq('id', roleId)
+
+          if (error) {
+            showToast(`Failed to delete role: ${error.message}`, 'error')
+            return
+          }
+
+          setRoles(prev => prev.filter(r => r.id !== roleId))
+          showToast('Role deleted successfully', 'success')
+        } catch (err) {
+          console.error('Error deleting role:', err)
+          showToast('Failed to delete role', 'error')
+        }
+      },
+      'Delete',
+      'Cancel'
+    )
+  }
+
   // Load projects from database on app start
   useEffect(() => {
     loadAllProjects()
   }, [])
+
+  // Load roles for all authenticated users (employees need it for clock-in dropdown)
+  useEffect(() => {
+    if (user) {
+      loadRoles()
+    }
+  }, [user])
 
   // Load weekly sessions from database
   useEffect(() => {
@@ -2028,11 +2156,14 @@ function App() {
                   className="dropdown"
                 >
                   <option value="">Choose your role...</option>
-                  {commonRoles.map(role => (
-                    <option key={role} value={role}>
-                      {role}
-                    </option>
-                  ))}
+                  {roles
+                    .filter(role => role.status === 'active')
+                    .map(role => (
+                      <option key={role.id} value={role.role_name}>
+                        {role.role_name}
+                      </option>
+                    ))
+                  }
                 </select>
               </div>
 
@@ -3298,6 +3429,238 @@ function App() {
             </div>
           </div>
         )
+      case 'roles':
+        // Admin-only Roles tab
+        if (userRole !== 'admin') {
+          return null
+        }
+
+        const activeRoles = roles.filter(r => r.status === 'active')
+        const inactiveRoles = roles.filter(r => r.status === 'inactive')
+
+        return (
+          <div className="tab-content">
+            <div className="roles-container">
+              <div className="roles-header">
+                <h2>Roles Management</h2>
+                <button 
+                  className="btn-primary"
+                  onClick={() => setShowAddRole(true)}
+                >
+                  <Plus size={20} /> Add Role
+                </button>
+              </div>
+
+              {/* Active Roles */}
+              <div className="roles-section">
+                <h3>Active Roles ({activeRoles.length})</h3>
+                {activeRoles.length === 0 ? (
+                  <p className="empty-state">No active roles. Add one to get started!</p>
+                ) : (
+                  <div className="roles-list">
+                    {activeRoles.map(role => (
+                      <div key={role.id} className="role-card">
+                        <div className="role-info">
+                          <div className="role-name">{role.role_name}</div>
+                          {role.cost_code && (
+                            <div className="role-detail">Cost Code: {role.cost_code}</div>
+                          )}
+                          {role.hourly_rate && (
+                            <div className="role-detail">Rate: ${role.hourly_rate}/hr</div>
+                          )}
+                        </div>
+                        <div className="role-actions">
+                          <button
+                            className="icon-btn"
+                            onClick={() => {
+                              setEditingRole(role)
+                              setShowEditRole(true)
+                            }}
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                          <button
+                            className="icon-btn delete"
+                            onClick={() => deleteRole(role.id)}
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Inactive Roles */}
+              {inactiveRoles.length > 0 && (
+                <div className="roles-section">
+                  <h3>Inactive Roles ({inactiveRoles.length})</h3>
+                  <div className="roles-list">
+                    {inactiveRoles.map(role => (
+                      <div key={role.id} className="role-card inactive">
+                        <div className="role-info">
+                          <div className="role-name">{role.role_name}</div>
+                          {role.cost_code && (
+                            <div className="role-detail">Cost Code: {role.cost_code}</div>
+                          )}
+                          {role.hourly_rate && (
+                            <div className="role-detail">Rate: ${role.hourly_rate}/hr</div>
+                          )}
+                        </div>
+                        <div className="role-actions">
+                          <button
+                            className="icon-btn"
+                            onClick={() => {
+                              setEditingRole(role)
+                              setShowEditRole(true)
+                            }}
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Add Role Modal */}
+              {showAddRole && (
+                <div className="modal-overlay" onClick={() => setShowAddRole(false)}>
+                  <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                    <h3>Add New Role</h3>
+                    <div className="form-group">
+                      <label>Role Name *</label>
+                      <input
+                        type="text"
+                        value={newRole.role_name}
+                        onChange={(e) => setNewRole({...newRole, role_name: e.target.value})}
+                        placeholder="e.g., Laborer, Foreman"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Cost Code (Optional)</label>
+                      <input
+                        type="text"
+                        value={newRole.cost_code}
+                        onChange={(e) => setNewRole({...newRole, cost_code: e.target.value})}
+                        placeholder="Coming soon"
+                        disabled
+                        style={{ opacity: 0.6, cursor: 'not-allowed' }}
+                      />
+                      <small className="form-hint">Coming soon - for future cost tracking</small>
+                    </div>
+                    <div className="form-group">
+                      <label>Hourly Rate (Optional)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={newRole.hourly_rate}
+                        onChange={(e) => setNewRole({...newRole, hourly_rate: e.target.value})}
+                        placeholder="Coming soon"
+                        disabled
+                        style={{ opacity: 0.6, cursor: 'not-allowed' }}
+                      />
+                      <small className="form-hint">Coming soon - for future billing calculations</small>
+                    </div>
+                    <div className="form-group">
+                      <label>Status</label>
+                      <select
+                        value={newRole.status}
+                        onChange={(e) => setNewRole({...newRole, status: e.target.value as 'active' | 'inactive'})}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
+                    <div className="modal-actions">
+                      <button 
+                        className="btn-secondary"
+                        onClick={() => setShowAddRole(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        className="btn-primary"
+                        onClick={addRole}
+                      >
+                        Add Role
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Edit Role Modal */}
+              {showEditRole && editingRole && (
+                <div className="modal-overlay" onClick={() => setShowEditRole(false)}>
+                  <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                    <h3>Edit Role</h3>
+                    <div className="form-group">
+                      <label>Role Name *</label>
+                      <input
+                        type="text"
+                        value={editingRole.role_name}
+                        onChange={(e) => setEditingRole({...editingRole, role_name: e.target.value})}
+                        placeholder="e.g., Laborer, Foreman"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Cost Code (Optional)</label>
+                      <input
+                        type="text"
+                        value={editingRole.cost_code || ''}
+                        onChange={(e) => setEditingRole({...editingRole, cost_code: e.target.value})}
+                        placeholder="Coming soon"
+                        disabled
+                        style={{ opacity: 0.6, cursor: 'not-allowed' }}
+                      />
+                      <small className="form-hint">Coming soon - for future cost tracking</small>
+                    </div>
+                    <div className="form-group">
+                      <label>Hourly Rate (Optional)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editingRole.hourly_rate || ''}
+                        onChange={(e) => setEditingRole({...editingRole, hourly_rate: e.target.value})}
+                        placeholder="Coming soon"
+                        disabled
+                        style={{ opacity: 0.6, cursor: 'not-allowed' }}
+                      />
+                      <small className="form-hint">Coming soon - for future billing calculations</small>
+                    </div>
+                    <div className="form-group">
+                      <label>Status</label>
+                      <select
+                        value={editingRole.status}
+                        onChange={(e) => setEditingRole({...editingRole, status: e.target.value as 'active' | 'inactive'})}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
+                    <div className="modal-actions">
+                      <button 
+                        className="btn-secondary"
+                        onClick={() => setShowEditRole(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        className="btn-primary"
+                        onClick={updateRole}
+                      >
+                        Save Changes
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )
       default:
         return null
     }
@@ -3411,7 +3774,7 @@ function App() {
       {/* Bottom Navigation */}
       <nav className="bottom-nav">
         {userRole === 'admin' ? (
-          // Admin-only navigation: Admin, Projects, Materials, History
+          // Admin-only navigation: Admin, Projects, Materials, Roles, History
           <>
             <button 
               className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
@@ -3433,6 +3796,13 @@ function App() {
             >
               <Package size={24} />
               <span>Materials</span>
+            </button>
+            <button 
+              className={`nav-item ${activeTab === 'roles' ? 'active' : ''}`}
+              onClick={() => setActiveTab('roles')}
+            >
+              <Users size={24} />
+              <span>Roles</span>
             </button>
             <button 
               className={`nav-item ${activeTab === 'history' ? 'active' : ''}`}
@@ -3702,9 +4072,14 @@ function App() {
                   value={editingSession.role}
                   onChange={(e) => setEditingSession({...editingSession, role: e.target.value})}
                 >
-                  {commonRoles.map(role => (
-                    <option key={role} value={role}>{role}</option>
-                  ))}
+                  {roles
+                    .filter(role => role.status === 'active')
+                    .map(role => (
+                      <option key={role.id} value={role.role_name}>
+                        {role.role_name}
+                      </option>
+                    ))
+                  }
                 </select>
               </div>
 
@@ -3846,9 +4221,14 @@ function App() {
                   onChange={(e) => setNewSessionData({...newSessionData, role: e.target.value})}
                 >
                   <option value="">Choose your role...</option>
-                  {commonRoles.map(role => (
-                    <option key={role} value={role}>{role}</option>
-                  ))}
+                  {roles
+                    .filter(role => role.status === 'active')
+                    .map(role => (
+                      <option key={role.id} value={role.role_name}>
+                        {role.role_name}
+                      </option>
+                    ))
+                  }
                 </select>
               </div>
 
