@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield, UserCheck, UserX, Plus, Package } from 'lucide-react'
+import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield, UserCheck, UserX, Plus, Package, Check, X } from 'lucide-react'
 import { supabase, type Project, type UserRole, supabaseOperations } from './lib/supabase'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
 import AccessDenied from './components/AccessDenied'
@@ -106,6 +106,7 @@ function App() {
 
   // Admin timesheet management state
   const [pendingTimesheets, setPendingTimesheets] = useState<any[]>([])
+  const [allTimesheets, setAllTimesheets] = useState<any[]>([]) // For accurate counts
   const [timesheetFilter, setTimesheetFilter] = useState<'submitted' | 'approved' | 'rejected' | 'all'>('submitted')
   const [selectedTimesheet, setSelectedTimesheet] = useState<any | null>(null)
   const [adminNotes, setAdminNotes] = useState('')
@@ -148,6 +149,7 @@ function App() {
     project: '',
     date: new Date().toISOString().split('T')[0]
   })
+  const [editingSessionMaterial, setEditingSessionMaterial] = useState<any>(null)
 
   // Project tracking state (for live project stats)
   const [selectedProjectForStats, setSelectedProjectForStats] = useState<Project | null>(null)
@@ -155,6 +157,14 @@ function App() {
   // const [loadingProjectStats, setLoadingProjectStats] = useState(false)  // Unused for now
   const [showCompleteConfirmation, setShowCompleteConfirmation] = useState(false)
   const [projectToComplete, setProjectToComplete] = useState<Project | null>(null)
+
+  // Project notes state
+  const [showProjectNotes, setShowProjectNotes] = useState(false)
+  const [selectedProjectForNotes, setSelectedProjectForNotes] = useState<Project | null>(null)
+  const [projectNotes, setProjectNotes] = useState<any[]>([])
+  const [newNote, setNewNote] = useState('')
+  const [isAddingNote, setIsAddingNote] = useState(false)
+  const [projectModalTab, setProjectModalTab] = useState<'notes' | 'materials'>('notes')
 
   // Confirmation modal state
   const [confirmationModal, setConfirmationModal] = useState<{
@@ -900,6 +910,118 @@ function App() {
     }
   }
 
+  // Load project notes
+  const loadProjectNotes = async (projectId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('project_notes')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error loading project notes:', error)
+        showToast('Failed to load notes', 'error')
+        return
+      }
+
+      setProjectNotes(data || [])
+    } catch (error) {
+      console.error('Error loading project notes:', error)
+      showToast('An error occurred while loading notes', 'error')
+    }
+  }
+
+  // Add a new project note
+  const addProjectNote = async () => {
+    if (!user || !selectedProjectForNotes || !newNote.trim()) return
+
+    setIsAddingNote(true)
+    try {
+      // Get user's full name
+      const { data: userRoleData } = await supabase
+        .from('user_roles')
+        .select('full_name, email')
+        .eq('user_id', user.id)
+        .single()
+
+      const userName = userRoleData?.full_name || userRoleData?.email || 'Unknown User'
+
+      const { data, error } = await supabase
+        .from('project_notes')
+        .insert([{
+          project_id: selectedProjectForNotes.id,
+          user_id: user.id,
+          user_name: userName,
+          note_text: newNote.trim()
+        }])
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error adding note:', error)
+        showToast('Failed to add note', 'error')
+        return
+      }
+
+      setProjectNotes([data, ...projectNotes])
+      setNewNote('')
+      showToast('Note added successfully!', 'success')
+    } catch (error) {
+      console.error('Error adding note:', error)
+      showToast('An error occurred while adding note', 'error')
+    } finally {
+      setIsAddingNote(false)
+    }
+  }
+
+  // Delete a project note
+  const deleteProjectNote = async (noteId: string) => {
+    try {
+      const { error } = await supabase
+        .from('project_notes')
+        .delete()
+        .eq('id', noteId)
+
+      if (error) {
+        console.error('Error deleting note:', error)
+        showToast('Failed to delete note', 'error')
+        return
+      }
+
+      setProjectNotes(projectNotes.filter(note => note.id !== noteId))
+      showToast('Note deleted successfully!', 'success')
+    } catch (error) {
+      console.error('Error deleting note:', error)
+      showToast('An error occurred while deleting note', 'error')
+    }
+  }
+
+  // Load project materials (for project modal)
+  const loadProjectMaterials = async (projectName: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('session_materials')
+        .select(`
+          *,
+          materials (name, unit)
+        `)
+        .eq('project', projectName)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error loading project materials:', error)
+        showToast('Failed to load materials', 'error')
+        return
+      }
+
+      setSessionMaterials(data || [])
+    } catch (error) {
+      console.error('Error loading project materials:', error)
+      showToast('An error occurred while loading materials', 'error')
+    }
+  }
+
   // Load pending timesheets (admin only)
   const loadPendingTimesheets = async () => {
     if (!user || userRole !== 'admin') return
@@ -907,6 +1029,7 @@ function App() {
     try {
       console.log('Loading timesheets with filter:', timesheetFilter)
       
+      // Load filtered timesheets for display
       const { data, error } = await supabase
         .from('work_sessions')
         .select('*')
@@ -914,6 +1037,12 @@ function App() {
           ? ['draft', 'submitted', 'approved', 'rejected'] 
           : [timesheetFilter])
         .order('submitted_at', { ascending: false })
+
+      // Also load all timesheets for accurate counts
+      const { data: allData } = await supabase
+        .from('work_sessions')
+        .select('*')
+        .in('status', ['draft', 'submitted', 'approved', 'rejected'])
 
       if (error) {
         console.error('Error loading timesheets:', error)
@@ -923,76 +1052,95 @@ function App() {
       
       console.log('Raw timesheet data:', data)
 
+      // Process filtered timesheets
       if (!data || data.length === 0) {
         console.log('No timesheets found with filter:', timesheetFilter)
         setPendingTimesheets([])
-        return
-      }
-
-      // Get user names from user_roles table
-      const userIds = [...new Set(data.map((s: any) => s.user_id))]
-      const { data: userRoles } = await supabase
-        .from('user_roles')
-        .select('user_id, full_name, email')
-        .in('user_id', userIds)
-      
-      // Create a map of user_id -> full_name
-      const userNameMap = new Map()
-      if (userRoles) {
-        userRoles.forEach((u: any) => {
-          userNameMap.set(u.user_id, u.full_name || u.email)
-        })
-      }
-
-      // Load materials for all sessions
-      const sessionIds = data.map((s: any) => s.id)
-      const { data: sessionMaterialsData } = await supabase
-        .from('session_materials')
-        .select(`
-          *,
-          materials (name, unit)
-        `)
-        .in('session_id', sessionIds)
-      
-      // Create a map of session_id -> materials array
-      const materialsMap = new Map()
-      if (sessionMaterialsData) {
-        sessionMaterialsData.forEach((sm: any) => {
-          if (!materialsMap.has(sm.session_id)) {
-            materialsMap.set(sm.session_id, [])
-          }
-          materialsMap.get(sm.session_id).push(sm)
-        })
-      }
-
-      // Group by user and week_ending_date
-      const grouped = (data || []).reduce((acc: any, session: any) => {
-        const key = `${session.user_id}-${session.week_ending_date || 'no-week'}`
-        if (!acc[key]) {
-          acc[key] = {
-            userId: session.user_id,
-            userName: userNameMap.get(session.user_id) || 'Unknown User',
-            weekEndingDate: session.week_ending_date,
-            status: session.status,
-            employeeInitials: session.employee_initials,
-            submittedAt: session.submitted_at,
-            sessions: [],
-            totalMinutes: 0
-          }
+      } else {
+        // Get user names from user_roles table
+        const userIds = [...new Set(data.map((s: any) => s.user_id))]
+        const { data: userRoles } = await supabase
+          .from('user_roles')
+          .select('user_id, full_name, email')
+          .in('user_id', userIds)
+        
+        // Create a map of user_id -> full_name
+        const userNameMap = new Map()
+        if (userRoles) {
+          userRoles.forEach((u: any) => {
+            userNameMap.set(u.user_id, u.full_name || u.email)
+          })
         }
-        // Add materials to session
-        const sessionWithMaterials = {
-          ...session,
-          materials: materialsMap.get(session.id) || []
-        }
-        acc[key].sessions.push(sessionWithMaterials)
-        acc[key].totalMinutes += session.duration || 0
-        return acc
-      }, {})
 
-      const timesheets = Object.values(grouped)
-      console.log('Grouped timesheets:', timesheets)
-      setPendingTimesheets(timesheets)
+        // Load materials for all sessions
+        const sessionIds = data.map((s: any) => s.id)
+        const { data: sessionMaterialsData } = await supabase
+          .from('session_materials')
+          .select(`
+            *,
+            materials (name, unit)
+          `)
+          .in('session_id', sessionIds)
+        
+        // Create a map of session_id -> materials array
+        const materialsMap = new Map()
+        if (sessionMaterialsData) {
+          sessionMaterialsData.forEach((sm: any) => {
+            if (!materialsMap.has(sm.session_id)) {
+              materialsMap.set(sm.session_id, [])
+            }
+            materialsMap.get(sm.session_id).push(sm)
+          })
+        }
+
+        // Group by user and week_ending_date
+        const grouped = (data || []).reduce((acc: any, session: any) => {
+          const key = `${session.user_id}-${session.week_ending_date || 'no-week'}`
+          if (!acc[key]) {
+            acc[key] = {
+              userId: session.user_id,
+              userName: userNameMap.get(session.user_id) || 'Unknown User',
+              weekEndingDate: session.week_ending_date,
+              status: session.status,
+              employeeInitials: session.employee_initials,
+              submittedAt: session.submitted_at,
+              sessions: [],
+              totalMinutes: 0
+            }
+          }
+          // Add materials to session
+          const sessionWithMaterials = {
+            ...session,
+            materials: materialsMap.get(session.id) || []
+          }
+          acc[key].sessions.push(sessionWithMaterials)
+          acc[key].totalMinutes += session.duration || 0
+          return acc
+        }, {})
+
+        const timesheets = Object.values(grouped)
+        console.log('Grouped timesheets:', timesheets)
+        setPendingTimesheets(timesheets)
+      }
+
+      // Process all timesheets for counts
+      if (allData && allData.length > 0) {
+        const allGrouped = (allData || []).reduce((acc: any, session: any) => {
+          const key = `${session.user_id}-${session.week_ending_date || 'no-week'}`
+          if (!acc[key]) {
+            acc[key] = {
+              status: session.status,
+              totalMinutes: 0
+            }
+          }
+          acc[key].totalMinutes += session.duration || 0
+          return acc
+        }, {})
+        
+        setAllTimesheets(Object.values(allGrouped))
+      } else {
+        setAllTimesheets([])
+      }
     } catch (error) {
       console.error('Error loading timesheets:', error)
       showToast('An error occurred while loading timesheets', 'error')
@@ -1551,6 +1699,11 @@ function App() {
 
           setSessionMaterials(prev => prev.filter(m => m.id !== id))
           showToast('Material removed from session', 'success')
+          
+          // Reload materials if we're in the project modal
+          if (selectedProjectForNotes) {
+            loadProjectMaterials(selectedProjectForNotes.name)
+          }
         } catch (err) {
           console.error('Error deleting session material:', err)
           showToast('Failed to remove material', 'error')
@@ -1559,6 +1712,34 @@ function App() {
       'Remove',
       'Cancel'
     )
+  }
+
+  const updateSessionMaterial = async (material: any) => {
+    try {
+      const { error } = await supabase
+        .from('session_materials')
+        .update({
+          quantity: parseFloat(material.quantity),
+          notes: material.notes
+        })
+        .eq('id', material.id)
+
+      if (error) {
+        showToast(`Failed to update material: ${error.message}`, 'error')
+        return
+      }
+
+      setEditingSessionMaterial(null)
+      showToast('Material updated successfully!', 'success')
+      
+      // Reload materials for this project
+      if (selectedProjectForNotes) {
+        loadProjectMaterials(selectedProjectForNotes.name)
+      }
+    } catch (err) {
+      console.error('Error updating material:', err)
+      showToast('Failed to update material', 'error')
+    }
   }
 
   // Project Tracking Functions
@@ -2000,6 +2181,57 @@ function App() {
       case 'projects':
         const activeProjects = projects.filter(p => p.status === 'active')
         
+        // Employee view - Read-only project list
+        if (userRole !== 'admin') {
+          return (
+            <div className="tab-content">
+              <div className="live-projects-container">
+                <div className="live-projects-header">
+                  <h2>Active Projects</h2>
+                  <p className="tracker-subtitle">View current project details</p>
+                </div>
+
+                {activeProjects.length === 0 ? (
+                  <div className="no-active-projects">
+                    <p>No active projects at this time.</p>
+                  </div>
+                ) : (
+                  <div className="live-projects-grid">
+                    {activeProjects.map(project => (
+                      <div key={project.id} className="live-project-card">
+                        <div className="live-project-header">
+                          <div className="project-title-area">
+                            <h3>{project.name}</h3>
+                            <span className="project-type-badge">{project.type}</span>
+                          </div>
+                        </div>
+                        <div className="project-quick-info">
+                          <p className="project-location">📍 {project.location}</p>
+                        </div>
+                        <div className="project-actions-footer">
+                          <button
+                            className="view-stats-btn"
+                            onClick={() => {
+                              setSelectedProjectForNotes(project)
+                              setShowProjectNotes(true)
+                              setProjectModalTab('notes')
+                              if (project.id) loadProjectNotes(project.id)
+                              loadProjectMaterials(project.name)
+                            }}
+                          >
+                            View Project
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        }
+        
+        // Admin view - Full management capabilities
         return (
           <div className="tab-content">
             <div className="live-projects-container">
@@ -2048,6 +2280,18 @@ function App() {
                           title="Edit Project"
                         >
                           <Edit2 size={18} />
+                        </button>
+                        <button
+                          className="view-stats-btn"
+                          onClick={() => {
+                            setSelectedProjectForNotes(project)
+                            setShowProjectNotes(true)
+                            setProjectModalTab('notes')
+                            if (project.id) loadProjectNotes(project.id)
+                            loadProjectMaterials(project.name)
+                          }}
+                        >
+                          View Project
                         </button>
                         <button
                           className="mark-complete-btn"
@@ -2784,25 +3028,25 @@ function App() {
                     className={`filter-btn ${timesheetFilter === 'submitted' ? 'active' : ''}`}
                     onClick={() => setTimesheetFilter('submitted')}
                   >
-                    Pending Approval ({pendingTimesheets.filter((t: any) => t.status === 'submitted').length})
+                    Pending Approval ({allTimesheets.filter((t: any) => t.status === 'submitted').length})
                   </button>
                   <button 
                     className={`filter-btn ${timesheetFilter === 'approved' ? 'active' : ''}`}
                     onClick={() => setTimesheetFilter('approved')}
                   >
-                    Approved ({pendingTimesheets.filter((t: any) => t.status === 'approved').length})
+                    Approved ({allTimesheets.filter((t: any) => t.status === 'approved').length})
                   </button>
                   <button 
                     className={`filter-btn ${timesheetFilter === 'rejected' ? 'active' : ''}`}
                     onClick={() => setTimesheetFilter('rejected')}
                   >
-                    Rejected ({pendingTimesheets.filter((t: any) => t.status === 'rejected').length})
+                    Rejected ({allTimesheets.filter((t: any) => t.status === 'rejected').length})
                   </button>
                   <button 
                     className={`filter-btn ${timesheetFilter === 'all' ? 'active' : ''}`}
                     onClick={() => setTimesheetFilter('all')}
                   >
-                    All ({pendingTimesheets.length})
+                    All ({allTimesheets.length})
                   </button>
                 </div>
 
@@ -3227,11 +3471,11 @@ function App() {
               <span>My Hours</span>
             </button>
             <button 
-              className={`nav-item ${activeTab === 'my-materials' ? 'active' : ''}`}
-              onClick={() => setActiveTab('my-materials')}
+              className={`nav-item ${activeTab === 'projects' ? 'active' : ''}`}
+              onClick={() => setActiveTab('projects')}
             >
-              <Package size={24} />
-              <span>Materials</span>
+              <Calendar size={24} />
+              <span>Projects</span>
             </button>
           </>
         )}
@@ -3416,6 +3660,40 @@ function App() {
             <h3>Edit Session</h3>
             <div className="edit-session-form">
               <div className="form-group">
+                <label>Date:</label>
+                <input
+                  type="date"
+                  value={(() => {
+                    const startDate = new Date(editingSession.start_time || editingSession.startTime)
+                    return startDate.toISOString().split('T')[0]
+                  })()}
+                  onChange={(e) => {
+                    // Update the date while preserving the time
+                    const newDate = new Date(e.target.value)
+                    const currentStart = new Date(editingSession.start_time || editingSession.startTime)
+                    const currentEnd = new Date(editingSession.end_time || editingSession.endTime)
+                    
+                    // Set the new date with existing times
+                    newDate.setHours(currentStart.getHours(), currentStart.getMinutes(), currentStart.getSeconds())
+                    const newEndDate = new Date(e.target.value)
+                    newEndDate.setHours(currentEnd.getHours(), currentEnd.getMinutes(), currentEnd.getSeconds())
+                    
+                    // Recalculate duration
+                    const newDuration = Math.round((newEndDate.getTime() - newDate.getTime()) / (1000 * 60))
+                    
+                    setEditingSession({
+                      ...editingSession,
+                      startTime: newDate,
+                      start_time: newDate.toISOString(),
+                      endTime: newEndDate,
+                      end_time: newEndDate.toISOString(),
+                      duration: newDuration
+                    })
+                  }}
+                />
+              </div>
+
+              <div className="form-group">
                 <label>Project:</label>
                 <select
                   value={editingSession.project}
@@ -3446,14 +3724,19 @@ function App() {
                   <label>Start Time:</label>
                   <input
                     type="time"
-                    value={editingSession.startTime ? new Date(editingSession.startTime).toTimeString().slice(0, 5) : ''}
+                    value={(() => {
+                      const startDate = new Date(editingSession.start_time || editingSession.startTime)
+                      const hours = startDate.getHours().toString().padStart(2, '0')
+                      const minutes = startDate.getMinutes().toString().padStart(2, '0')
+                      return `${hours}:${minutes}`
+                    })()}
                     onChange={(e) => {
                       const [hours, minutes] = e.target.value.split(':')
-                      const newStart = new Date(editingSession.startTime)
+                      const newStart = new Date(editingSession.start_time || editingSession.startTime)
                       newStart.setHours(parseInt(hours), parseInt(minutes))
                       
                       // Recalculate duration when start time changes
-                      const endTime = editingSession.endTime ? new Date(editingSession.endTime) : newStart
+                      const endTime = new Date(editingSession.end_time || editingSession.endTime)
                       const newDuration = Math.round((endTime.getTime() - newStart.getTime()) / (1000 * 60))
                       
                       setEditingSession({
@@ -3470,14 +3753,19 @@ function App() {
                   <label>End Time:</label>
                   <input
                     type="time"
-                    value={editingSession.endTime ? new Date(editingSession.endTime).toTimeString().slice(0, 5) : ''}
+                    value={(() => {
+                      const endDate = new Date(editingSession.end_time || editingSession.endTime)
+                      const hours = endDate.getHours().toString().padStart(2, '0')
+                      const minutes = endDate.getMinutes().toString().padStart(2, '0')
+                      return `${hours}:${minutes}`
+                    })()}
                     onChange={(e) => {
                       const [hours, minutes] = e.target.value.split(':')
-                      const newEnd = new Date(editingSession.endTime)
+                      const newEnd = new Date(editingSession.end_time || editingSession.endTime)
                       newEnd.setHours(parseInt(hours), parseInt(minutes))
                       
                       // Recalculate duration when end time changes
-                      const startTime = editingSession.startTime ? new Date(editingSession.startTime) : newEnd
+                      const startTime = new Date(editingSession.start_time || editingSession.startTime)
                       const newDuration = Math.round((newEnd.getTime() - startTime.getTime()) / (1000 * 60))
                       
                       setEditingSession({
@@ -3759,6 +4047,267 @@ function App() {
                 Done
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Project Notes Modal */}
+      {showProjectNotes && selectedProjectForNotes && (
+        <div className="modal-overlay" onClick={() => setShowProjectNotes(false)}>
+          <div className="modal-content project-notes-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>Project Details</h3>
+                <p className="modal-subtitle">{selectedProjectForNotes.name}</p>
+              </div>
+              <button 
+                className="modal-close-btn" 
+                onClick={() => setShowProjectNotes(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Tab Switcher */}
+            <div className="modal-tabs">
+              <button
+                className={`tab-btn ${projectModalTab === 'notes' ? 'active' : ''}`}
+                onClick={() => setProjectModalTab('notes')}
+              >
+                Notes
+              </button>
+              <button
+                className={`tab-btn ${projectModalTab === 'materials' ? 'active' : ''}`}
+                onClick={() => setProjectModalTab('materials')}
+              >
+                Materials
+              </button>
+            </div>
+
+            {/* Notes Tab Content */}
+            {projectModalTab === 'notes' && (
+              <>
+                {/* Add Note Form */}
+                <div className="add-note-form">
+                  <textarea
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="Add a note for this project..."
+                    rows={3}
+                    className="note-textarea"
+                  />
+                  <button
+                    className="btn-primary"
+                    onClick={addProjectNote}
+                    disabled={!newNote.trim() || isAddingNote}
+                  >
+                    {isAddingNote ? 'Adding...' : 'Add Note'}
+                  </button>
+                </div>
+
+                {/* Notes List */}
+                <div className="notes-list">
+                  {projectNotes.length === 0 ? (
+                    <div className="empty-state">
+                      <p>No notes yet. Be the first to add one!</p>
+                    </div>
+                  ) : (
+                    projectNotes.map(note => (
+                      <div key={note.id} className="note-item">
+                        <div className="note-header">
+                          <div className="note-author">
+                            <strong>{note.user_name}</strong>
+                            <span className="note-date">
+                              {new Date(note.created_at).toLocaleDateString()} at {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          {user && note.user_id === user.id && (
+                            <button
+                              className="icon-btn delete"
+                              onClick={() => deleteProjectNote(note.id)}
+                              title="Delete note"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                        </div>
+                        <div className="note-text">{note.note_text}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Materials Tab Content */}
+            {projectModalTab === 'materials' && (
+              <>
+                {/* Add Material Form */}
+                <div className="add-note-form">
+                  <div className="form-group">
+                    <label>Material:</label>
+                    <select
+                      value={newSessionMaterial.materialId}
+                      onChange={(e) => setNewSessionMaterial({...newSessionMaterial, materialId: e.target.value})}
+                      className="input-field"
+                    >
+                      <option value="">Select material...</option>
+                      {materials
+                        .filter(m => m.status === 'active')
+                        .map(m => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} ({m.unit})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Quantity:</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={newSessionMaterial.quantity}
+                      onChange={(e) => setNewSessionMaterial({...newSessionMaterial, quantity: e.target.value})}
+                      placeholder="e.g., 1500"
+                      className="input-field"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Notes (optional):</label>
+                    <input
+                      type="text"
+                      value={newSessionMaterial.notes}
+                      onChange={(e) => setNewSessionMaterial({...newSessionMaterial, notes: e.target.value})}
+                      placeholder="Additional details..."
+                      className="input-field"
+                    />
+                  </div>
+                  <button
+                    className="btn-primary"
+                    onClick={async () => {
+                      // Set the project and date before adding
+                      const tempMaterial = {
+                        ...newSessionMaterial,
+                        project: selectedProjectForNotes.name,
+                        date: new Date().toISOString().split('T')[0]
+                      }
+                      setNewSessionMaterial(tempMaterial)
+                      
+                      // Add material
+                      await addSessionMaterial()
+                      
+                      // Reload materials for this project
+                      loadProjectMaterials(selectedProjectForNotes.name)
+                    }}
+                    disabled={!newSessionMaterial.materialId || !newSessionMaterial.quantity}
+                  >
+                    Add Material
+                  </button>
+                </div>
+
+                {/* Materials List */}
+                <div className="notes-list">
+                  {sessionMaterials.length === 0 ? (
+                    <div className="empty-state">
+                      <p>No materials added yet.</p>
+                    </div>
+                  ) : (
+                    <table className="materials-table">
+                      <thead>
+                        <tr>
+                          <th>Material</th>
+                          <th>Quantity</th>
+                          <th>Unit</th>
+                          <th>Date</th>
+                          <th>Notes</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sessionMaterials.map(material => (
+                          <tr key={material.id}>
+                            <td>{material.materials.name}</td>
+                            <td>
+                              {editingSessionMaterial?.id === material.id ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={editingSessionMaterial.quantity}
+                                  onChange={(e) => setEditingSessionMaterial({...editingSessionMaterial, quantity: e.target.value})}
+                                  className="inline-edit-input"
+                                  style={{ width: '80px' }}
+                                />
+                              ) : (
+                                material.quantity
+                              )}
+                            </td>
+                            <td>{material.materials.unit}</td>
+                            <td>{new Date(material.created_at).toLocaleDateString()}</td>
+                            <td>
+                              {editingSessionMaterial?.id === material.id ? (
+                                <input
+                                  type="text"
+                                  value={editingSessionMaterial.notes || ''}
+                                  onChange={(e) => setEditingSessionMaterial({...editingSessionMaterial, notes: e.target.value})}
+                                  className="inline-edit-input"
+                                  placeholder="Optional notes..."
+                                />
+                              ) : (
+                                material.notes || '-'
+                              )}
+                            </td>
+                            <td>
+                              <div className="material-actions">
+                                {editingSessionMaterial?.id === material.id ? (
+                                  <>
+                                    <button
+                                      className="icon-btn save"
+                                      onClick={() => updateSessionMaterial(editingSessionMaterial)}
+                                      title="Save changes"
+                                    >
+                                      <Check size={16} />
+                                    </button>
+                                    <button
+                                      className="icon-btn cancel"
+                                      onClick={() => setEditingSessionMaterial(null)}
+                                      title="Cancel"
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      className="icon-btn edit"
+                                      onClick={() => setEditingSessionMaterial({
+                                        id: material.id,
+                                        quantity: material.quantity.toString(),
+                                        notes: material.notes || ''
+                                      })}
+                                      title="Edit material"
+                                    >
+                                      <Edit2 size={16} />
+                                    </button>
+                                    <button
+                                      className="icon-btn delete"
+                                      onClick={() => deleteSessionMaterial(material.id)}
+                                      title="Delete material"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
