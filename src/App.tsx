@@ -2330,18 +2330,12 @@ function App() {
                       value={newProject.name}
                       onChange={(e) => setNewProject(prev => ({ ...prev, name: e.target.value }))}
                     />
-                    <select
+                    <input
+                      type="text"
+                      placeholder="Project Type *"
                       value={newProject.type}
                       onChange={(e) => setNewProject(prev => ({ ...prev, type: e.target.value }))}
-                    >
-                      <option value="" disabled>Project Type *</option>
-                      <option value="Landscape Installation">Landscape Installation</option>
-                      <option value="Weekly Maintenance">Weekly Maintenance</option>
-                      <option value="Commercial Maintenance">Commercial Maintenance</option>
-                      <option value="Hardscaping">Hardscaping</option>
-                      <option value="Irrigation">Irrigation</option>
-                      <option value="Tree Service">Tree Service</option>
-                    </select>
+                    />
                   </div>
                   <div className="form-row">
                     <input
@@ -2395,17 +2389,12 @@ function App() {
                     </div>
                     <div className="form-group">
                       <label>Project Type *</label>
-                      <select
+                      <input
+                        type="text"
                         value={editingProject.type}
                         onChange={(e) => setEditingProject({...editingProject, type: e.target.value})}
-                      >
-                        <option value="Landscape Installation">Landscape Installation</option>
-                        <option value="Weekly Maintenance">Weekly Maintenance</option>
-                        <option value="Commercial Maintenance">Commercial Maintenance</option>
-                        <option value="Hardscaping">Hardscaping</option>
-                        <option value="Irrigation">Irrigation</option>
-                        <option value="Tree Service">Tree Service</option>
-                      </select>
+                        placeholder="e.g., Landscape Installation, Weekly Maintenance"
+                      />
                     </div>
                     <div className="form-group">
                       <label>Location/Address *</label>
