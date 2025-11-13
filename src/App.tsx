@@ -522,73 +522,80 @@ function App() {
   }, [user])
 
   // Load weekly sessions from database
-  useEffect(() => {
-    const loadWeeklySessions = async () => {
-      if (!user) return
-      
-      try {
-        // Get the start of this week (Monday)
-        const now = new Date()
-        const startOfWeek = new Date(now)
-        const dayOfWeek = now.getDay()
-        const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek // If Sunday, go back 6 days, otherwise go to Monday
-        startOfWeek.setDate(now.getDate() + diff)
-        startOfWeek.setHours(0, 0, 0, 0)
-        
-        const { data, error } = await supabase
-          .from('work_sessions')
-          .select('*')
-          .eq('user_id', user.id)
-          .gte('start_time', startOfWeek.toISOString())
-          .order('start_time', { ascending: false })
-        
-        if (error) {
-          console.error('Error loading weekly sessions:', error)
-        } else {
-          const sessions = (data || []).map((session: any) => ({
-            id: session.id,
-            project: session.project,
-            location: session.location,
-            role: session.role,
-            startTime: new Date(session.start_time),
-            endTime: new Date(session.end_time),
-            duration: session.duration,
-            notes: session.notes,
-            status: session.status,
-            weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
-            employeeInitials: session.employee_initials,
-            submittedAt: session.submitted_at ? new Date(session.submitted_at) : undefined,
-            approvedBy: session.approved_by,
-            approvedAt: session.approved_at ? new Date(session.approved_at) : undefined,
-            adminNotes: session.admin_notes
-          }))
-          setWeeklySessions(sessions)
-          
-          // Debug: log sessions
-          console.log('📊 Loaded weekly sessions:', sessions.length)
-          if (sessions.length > 0) {
-            console.log('First session:', {
-              startTime: sessions[0].startTime,
-              startTimeString: sessions[0].startTime.toDateString(),
-              duration: sessions[0].duration,
-              endTime: sessions[0].endTime,
-              project: sessions[0].project,
-              role: sessions[0].role
-            })
-          } else {
-            console.log('⚠️ No sessions found for this week')
-          }
-        }
-      } catch (error) {
-        console.error('Database error loading sessions:', error)
-      }
-    }
+  const loadWeeklySessions = async () => {
+    if (!user) return
     
+    try {
+      // Get the start of this week (Monday)
+      const now = new Date()
+      const startOfWeek = new Date(now)
+      const dayOfWeek = now.getDay()
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek // If Sunday, go back 6 days, otherwise go to Monday
+      startOfWeek.setDate(now.getDate() + diff)
+      startOfWeek.setHours(0, 0, 0, 0)
+      
+      const { data, error } = await supabase
+        .from('work_sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('start_time', startOfWeek.toISOString())
+        .order('start_time', { ascending: false })
+      
+      if (error) {
+        console.error('Error loading weekly sessions:', error)
+      } else {
+        const sessions = (data || []).map((session: any) => ({
+          id: session.id,
+          project: session.project,
+          location: session.location,
+          role: session.role,
+          startTime: new Date(session.start_time),
+          endTime: new Date(session.end_time),
+          duration: session.duration,
+          notes: session.notes,
+          status: session.status,
+          weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
+          employeeInitials: session.employee_initials,
+          submittedAt: session.submitted_at ? new Date(session.submitted_at) : undefined,
+          approvedBy: session.approved_by,
+          approvedAt: session.approved_at ? new Date(session.approved_at) : undefined,
+          adminNotes: session.admin_notes
+        }))
+        setWeeklySessions(sessions)
+        
+        // Debug: log sessions
+        console.log('📊 Loaded weekly sessions:', sessions.length)
+        if (sessions.length > 0) {
+          console.log('First session:', {
+            startTime: sessions[0].startTime,
+            startTimeString: sessions[0].startTime.toDateString(),
+            duration: sessions[0].duration,
+            endTime: sessions[0].endTime,
+            project: sessions[0].project,
+            role: sessions[0].role,
+            status: sessions[0].status
+          })
+          console.log('All sessions with status:', sessions.map(s => ({
+            date: s.startTime.toDateString(),
+            project: s.project,
+            duration: s.duration,
+            status: s.status
+          })))
+        } else {
+          console.log('⚠️ No sessions found for this week')
+        }
+      }
+    } catch (error) {
+      console.error('Database error loading sessions:', error)
+    }
+  }
+
+  useEffect(() => {
     loadWeeklySessions()
     
-    // Reload sessions when we switch to the hours tab
+    // Reload sessions when we switch to the hours or timesheet tab
     const interval = setInterval(() => {
-      if (activeTab === 'hours') {
+      if (activeTab === 'hours' || activeTab === 'timesheet') {
         // Don't reload if we just modified data (within last 3 seconds)
         const timeSinceModification = Date.now() - lastModificationTime
         if (timeSinceModification > 3000) {
@@ -597,7 +604,7 @@ function App() {
           console.log('⏸️ Skipping reload - recent modification')
         }
       }
-    }, 10000) // Refresh every 10 seconds when on hours tab
+    }, 10000) // Refresh every 10 seconds when on hours or timesheet tab
     
     return () => clearInterval(interval)
   }, [user, activeTab, lastModificationTime])
@@ -977,17 +984,32 @@ function App() {
       const weekEndingDate = new Date(startOfWeek)
       weekEndingDate.setDate(startOfWeek.getDate() + 6) // Saturday
       
-      const { error } = await supabase
+      // Update ALL sessions for this week (draft AND approved) to submitted status
+      // This ensures that if you add/edit after approval, everything goes back for re-review
+      console.log('📝 Submitting timesheet with params:', {
+        userId: user.id,
+        startOfWeek: startOfWeek.toISOString(),
+        initials
+      })
+      
+      const { data: updateResult, error } = await supabase
         .from('work_sessions')
         .update({
           status: 'submitted',
           employee_initials: initials,
           submitted_at: new Date().toISOString(),
-          week_ending_date: weekEndingDate.toISOString()
+          week_ending_date: weekEndingDate.toISOString(),
+          // Clear previous approval when re-submitting
+          approved_by: null,
+          approved_at: null,
+          admin_notes: null
         })
         .eq('user_id', user.id)
-        .eq('status', 'draft')
+        .in('status', ['draft', 'approved'])
         .gte('start_time', startOfWeek.toISOString())
+        .select()
+      
+      console.log('📤 Update result:', { updated: updateResult?.length || 0, error })
       
       if (error) {
         console.error('Error submitting timesheet:', error)
@@ -1024,12 +1046,64 @@ function App() {
           }))
           setWeeklySessions(sessions)
         }
+        
+        // If user is admin/super admin, also reload the admin timesheets
+        if (userRole === 'admin' || userRole === 'super_admin') {
+          console.log('🔄 Reloading admin timesheets after submission')
+          loadPendingTimesheets()
+        }
       }
     } catch (error) {
       console.error('Error submitting timesheet:', error)
       showToast('An error occurred. Please try again.', 'error')
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  // Convert rejected sessions back to draft for re-submission
+  const convertRejectedToDraft = async () => {
+    if (!user) return
+    
+    try {
+      const rejectedSessions = weeklySessions.filter(s => s.status === 'rejected')
+      console.log('🔄 Converting rejected sessions:', rejectedSessions.length)
+      console.log('Session IDs:', rejectedSessions.map(s => s.id))
+      console.log('Before conversion - weeklySessions:', weeklySessions.map(s => ({ id: s.id, status: s.status, duration: s.duration, endTime: s.endTime })))
+      
+      if (rejectedSessions.length === 0) {
+        showToast('No rejected sessions to convert', 'info')
+        return
+      }
+      
+      const { data: updateResult, error } = await supabase
+        .from('work_sessions')
+        .update({ 
+          status: 'draft',
+          approved_by: null,
+          approved_at: null,
+          admin_notes: null
+        })
+        .in('id', rejectedSessions.map(s => s.id))
+        .select()
+      
+      if (error) {
+        console.error('Error converting sessions:', error)
+        showToast('Failed to convert sessions to draft', 'error')
+      } else {
+        console.log('✅ Database update result:', updateResult)
+        console.log('Updated sessions:', updateResult?.map(s => ({ id: s.id, status: s.status })))
+        showToast(`${rejectedSessions.length} rejected session(s) converted to draft. Edit and re-submit when ready.`, 'success')
+        // Wait a moment for database to commit, then reload
+        setTimeout(async () => {
+          console.log('🔄 Now reloading weekly sessions...')
+          await loadWeeklySessions()
+          console.log('After reload - weeklySessions:', weeklySessions.map(s => ({ id: s.id, status: s.status, duration: s.duration, endTime: s.endTime })))
+        }, 300)
+      }
+    } catch (error) {
+      console.error('Error converting rejected sessions:', error)
+      showToast('An error occurred', 'error')
     }
   }
 
@@ -1292,7 +1366,7 @@ function App() {
               userId: session.user_id,
               userName: allUserNameMap.get(session.user_id) || 'Unknown User',
               weekEndingDate: session.week_ending_date,
-              status: session.status,
+              status: session.status, // Will be updated to the most common status
               employeeInitials: session.employee_initials,
               submittedAt: session.submitted_at,
               sessions: [],
@@ -1307,6 +1381,16 @@ function App() {
           acc[key].totalMinutes += session.duration || 0
           return acc
         }, {})
+        
+        // Update group status to reflect the actual status of sessions
+        // Use the most common status, prioritizing: approved > submitted > rejected > draft
+        Object.values(allGrouped).forEach((group: any) => {
+          const statuses = group.sessions.map((s: any) => s.status)
+          if (statuses.every((s: string) => s === 'approved')) group.status = 'approved'
+          else if (statuses.some((s: string) => s === 'submitted')) group.status = 'submitted'
+          else if (statuses.some((s: string) => s === 'rejected')) group.status = 'rejected'
+          else group.status = 'draft'
+        })
         
         console.log('Setting allTimesheets with:', Object.values(allGrouped))
         setAllTimesheets(Object.values(allGrouped))
@@ -1550,11 +1634,17 @@ function App() {
       const [startHours, startMinutes] = newSessionData.startTime.split(':')
       const [endHours, endMinutes] = newSessionData.endTime.split(':')
       
-      const startDateTime = new Date(newSessionData.date)
-      startDateTime.setHours(parseInt(startHours), parseInt(startMinutes), 0, 0)
+      // Parse date as local time, not UTC
+      const [year, month, day] = newSessionData.date.split('-').map(Number)
+      const startDateTime = new Date(year, month - 1, day, parseInt(startHours), parseInt(startMinutes), 0, 0)
+      const endDateTime = new Date(year, month - 1, day, parseInt(endHours), parseInt(endMinutes), 0, 0)
       
-      const endDateTime = new Date(newSessionData.date)
-      endDateTime.setHours(parseInt(endHours), parseInt(endMinutes), 0, 0)
+      console.log('🗓️ Creating session for:', {
+        inputDate: newSessionData.date,
+        startDateTime: startDateTime.toISOString(),
+        startDateString: startDateTime.toDateString(),
+        localTime: startDateTime.toLocaleString()
+      })
       
       // Calculate duration
       const duration = Math.round((endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60))
@@ -1590,6 +1680,55 @@ function App() {
       
       setShowAddSessionModal(false)
       showToast('Session added successfully!', 'success')
+      
+      // Reload weekly sessions to show the new one
+      const now = new Date()
+      const startOfWeek = new Date(now)
+      const dayOfWeek = now.getDay()
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+      startOfWeek.setDate(now.getDate() + diff)
+      startOfWeek.setHours(0, 0, 0, 0)
+      
+      console.log('🔍 Reloading sessions after manual add')
+      console.log('Today:', now.toDateString())
+      console.log('Start of week filter:', startOfWeek.toISOString())
+      
+      const { data } = await supabase
+        .from('work_sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('start_time', startOfWeek.toISOString())
+        .order('start_time', { ascending: false })
+      
+      console.log('📥 Database returned', data?.length || 0, 'sessions')
+      if (data && data.length > 0) {
+        console.log('First session from DB:', {
+          start_time: data[0].start_time,
+          project: data[0].project,
+          status: data[0].status
+        })
+      }
+      
+      if (data) {
+        const sessions = data.map((session: any) => ({
+          id: session.id,
+          project: session.project,
+          location: session.location,
+          role: session.role,
+          startTime: new Date(session.start_time),
+          endTime: new Date(session.end_time),
+          duration: session.duration,
+          notes: session.notes,
+          status: session.status,
+          weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
+          employeeInitials: session.employee_initials,
+          submittedAt: session.submitted_at ? new Date(session.submitted_at) : undefined,
+          approvedBy: session.approved_by,
+          approvedAt: session.approved_at ? new Date(session.approved_at) : undefined,
+          adminNotes: session.admin_notes
+        }))
+        setWeeklySessions(sessions)
+      }
       
     } catch (error) {
       console.error('Error adding manual session:', error)
@@ -1629,7 +1768,7 @@ function App() {
       }
     }
     
-    if (activeTab === 'materials' || activeTab === 'hours' || activeTab === 'my-materials') {
+    if (activeTab === 'materials' || activeTab === 'hours' || activeTab === 'my-materials' || activeTab === 'projects' || activeTab === 'admin' || activeTab === 'timesheet') {
       loadMaterials()
     }
   }, [user, activeTab])
@@ -2719,8 +2858,8 @@ function App() {
                                   </span>
                                 </div>
                                 
-                                {/* Edit/Delete buttons only for draft sessions */}
-                                {session.status === 'draft' && (
+                                {/* Edit/Delete buttons for draft and rejected sessions */}
+                                {(session.status === 'draft' || session.status === 'rejected') && (
                                   <div className="session-actions">
                                     <button
                                       className="edit-session-btn"
@@ -2783,8 +2922,7 @@ function App() {
                     )}
                     {weeklySessions.filter(s => s.status === 'rejected').length > 0 && (
                       <div className="status-badge rejected">
-                        {weeklySessions.filter(s => s.status === 'rejected').length} sessions rejected
-                      </div>
+                        {weeklySessions.filter(s => s.status === 'rejected').length} sessions rejected <button className="convert-to-draft-btn" onClick={convertRejectedToDraft} style={{ marginLeft: '10px', padding: '4px 8px', fontSize: '12px', cursor: 'pointer' }} title="Convert all rejected sessions to draft status so you can edit and re-submit them">Make Changes</button></div>
                     )}
                   </div>
                   
@@ -2792,8 +2930,7 @@ function App() {
                   {weeklySessions.filter(s => s.status === 'draft' && s.duration && s.endTime).length > 0 && (
                     <div className="submission-form">
                       <p className="submission-instructions">
-                        Review your hours for the entire week above, then submit your timesheet for admin approval.
-                        All sessions will be submitted together. Your initials will be recorded with this submission.
+                        By providing your initials below, you certify that the dates, times, and hours worked recorded above are accurate and complete. All sessions for the week will be submitted together for approval.
                       </p>
                       <div className="initials-input-group">
                         <label htmlFor="initials">Your Initials:</label>
@@ -3210,7 +3347,41 @@ function App() {
         return (
           <div className="tab-content">
             <div className="admin-container">
-              <h2>Admin Panel</h2>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <h2 style={{ margin: 0 }}>Admin Panel</h2>
+                <button
+                  onClick={() => {
+                    console.log('🔄 Manual refresh triggered')
+                    loadPendingTimesheets()
+                  }}
+                  style={{ 
+                    padding: '8px 16px', 
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    borderRadius: '8px',
+                    border: '1px solid #e0e0e0',
+                    backgroundColor: '#fff',
+                    color: '#333',
+                    fontWeight: '500',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f5f5f5'
+                    e.currentTarget.style.borderColor = '#ccc'
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.backgroundColor = '#fff'
+                    e.currentTarget.style.borderColor = '#e0e0e0'
+                  }}
+                  title="Refresh timesheet data"
+                >
+                  <span style={{ fontSize: '16px' }}>🔄</span>
+                  <span>Refresh</span>
+                </button>
+              </div>
               
               {/* Timesheet Management Section */}
               <div className="admin-section timesheets-section">
@@ -3860,8 +4031,8 @@ function App() {
                                   </span>
                                 </div>
                                 
-                                {/* Edit/Delete buttons only for draft sessions */}
-                                {session.status === 'draft' && (
+                                {/* Edit/Delete buttons for draft and rejected sessions */}
+                                {(session.status === 'draft' || session.status === 'rejected') && (
                                   <div className="session-actions">
                                     <button
                                       className="edit-session-btn"
@@ -3924,8 +4095,7 @@ function App() {
                     )}
                     {weeklySessions.filter(s => s.status === 'rejected').length > 0 && (
                       <div className="status-badge rejected">
-                        {weeklySessions.filter(s => s.status === 'rejected').length} sessions rejected
-                      </div>
+                        {weeklySessions.filter(s => s.status === 'rejected').length} sessions rejected <button className="convert-to-draft-btn" onClick={convertRejectedToDraft} style={{ marginLeft: '10px', padding: '4px 8px', fontSize: '12px', cursor: 'pointer' }} title="Convert all rejected sessions to draft status so you can edit and re-submit them">Make Changes</button></div>
                     )}
                   </div>
                   
@@ -3933,8 +4103,7 @@ function App() {
                   {weeklySessions.filter(s => s.status === 'draft' && s.duration && s.endTime).length > 0 && (
                     <div className="submission-form">
                       <p className="submission-instructions">
-                        Review your hours for the entire week above, then submit your timesheet for admin approval.
-                        All sessions will be submitted together. Your initials will be recorded with this submission.
+                        By providing your initials below, you certify that the dates, times, and hours worked recorded above are accurate and complete. All sessions for the week will be submitted together for approval.
                       </p>
                       <div className="initials-input-group">
                         <label htmlFor="initials">Your Initials:</label>
@@ -4855,13 +5024,14 @@ function App() {
             {projectModalTab === 'materials' && (
               <>
                 {/* Add Material Form */}
-                <div className="add-note-form">
-                  <div className="form-group">
-                    <label>Material:</label>
+                <div className="add-note-form" style={{ padding: '12px', marginBottom: '12px' }}>
+                  <div className="form-group" style={{ marginBottom: '8px' }}>
+                    <label style={{ fontSize: '13px', marginBottom: '3px', display: 'block', fontWeight: '600' }}>Material:</label>
                     <select
                       value={newSessionMaterial.materialId}
                       onChange={(e) => setNewSessionMaterial({...newSessionMaterial, materialId: e.target.value})}
                       className="input-field"
+                      style={{ padding: '6px 8px', fontSize: '14px' }}
                     >
                       <option value="">Select material...</option>
                       {materials
@@ -4873,8 +5043,8 @@ function App() {
                         ))}
                     </select>
                   </div>
-                  <div className="form-group">
-                    <label>Quantity:</label>
+                  <div className="form-group" style={{ marginBottom: '8px' }}>
+                    <label style={{ fontSize: '13px', marginBottom: '3px', display: 'block', fontWeight: '600' }}>Quantity:</label>
                     <input
                       type="number"
                       step="0.01"
@@ -4883,16 +5053,18 @@ function App() {
                       onChange={(e) => setNewSessionMaterial({...newSessionMaterial, quantity: e.target.value})}
                       placeholder="e.g., 1500"
                       className="input-field"
+                      style={{ padding: '6px 8px', fontSize: '14px' }}
                     />
                   </div>
-                  <div className="form-group">
-                    <label>Notes (optional):</label>
+                  <div className="form-group" style={{ marginBottom: '8px' }}>
+                    <label style={{ fontSize: '13px', marginBottom: '3px', display: 'block', fontWeight: '600' }}>Notes (optional):</label>
                     <input
                       type="text"
                       value={newSessionMaterial.notes}
                       onChange={(e) => setNewSessionMaterial({...newSessionMaterial, notes: e.target.value})}
                       placeholder="Additional details..."
                       className="input-field"
+                      style={{ padding: '6px 8px', fontSize: '14px' }}
                     />
                   </div>
                   <button
@@ -5065,3 +5237,6 @@ function App() {
 }
 
 export default App
+
+
+
