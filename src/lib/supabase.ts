@@ -42,7 +42,7 @@ export interface UserRole {
   user_id: string
   email: string
   full_name: string
-  role: 'user' | 'approved' | 'admin'
+  role: 'user' | 'approved' | 'admin' | 'super_admin'
   approved_at?: string
   approved_by?: string
   created_at?: string
@@ -232,8 +232,8 @@ export const supabaseOperations = {
     return data[0]
   },
 
-  async updateUserRole(userId: string, role: 'user' | 'approved' | 'admin') {
-    const approvedAt = (role === 'approved' || role === 'admin') ? new Date().toISOString() : null
+  async updateUserRole(userId: string, role: 'user' | 'approved' | 'admin' | 'super_admin') {
+    const approvedAt = (role === 'approved' || role === 'admin' || role === 'super_admin') ? new Date().toISOString() : null
     const { data, error } = await supabase
       .from('user_roles')
       .update({ 

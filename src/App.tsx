@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield, UserCheck, UserX, Plus, Package, Check, X, Users } from 'lucide-react'
+import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield, UserCheck, UserX, Plus, Package, Check, X, Users, FileText } from 'lucide-react'
 import { supabase, type Project, type UserRole, supabaseOperations } from './lib/supabase'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
 import AccessDenied from './components/AccessDenied'
@@ -98,7 +98,6 @@ function App() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Admin timesheet management state
-  const [pendingTimesheets, setPendingTimesheets] = useState<any[]>([])
   const [allTimesheets, setAllTimesheets] = useState<any[]>([]) // For accurate counts
   const [timesheetFilter, setTimesheetFilter] = useState<'submitted' | 'approved' | 'rejected' | 'all'>('submitted')
   const [selectedTimesheet, setSelectedTimesheet] = useState<any | null>(null)
@@ -180,7 +179,7 @@ function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [loading, setLoading] = useState(true)
-  const [userRole, setUserRole] = useState<'user' | 'approved' | 'admin' | null>(null)
+  const [userRole, setUserRole] = useState<'user' | 'approved' | 'admin' | 'super_admin' | null>(null)
   const [allUsers, setAllUsers] = useState<UserRole[]>([])
 
   // Toast notification function
@@ -293,9 +292,9 @@ function App() {
     }
   }
 
-  // Load all users (for admin)
+  // Load all users (for admin and super admin)
   const loadAllUsers = async () => {
-    if (userRole !== 'admin') return
+    if (userRole !== 'admin' && userRole !== 'super_admin') return
     
     try {
       const users = await supabaseOperations.getAllUserRoles()
@@ -306,12 +305,8 @@ function App() {
     }
   }
 
-  // Auto-switch admin users to admin tab on login
-  useEffect(() => {
-    if (userRole === 'admin' && activeTab === 'clock') {
-      setActiveTab('admin')
-    }
-  }, [userRole])
+  // Note: Admins and super admins can now use the Clock tab (removed auto-redirect)
+  // They need to clock in/out like employees do
 
   // Save active tab to localStorage whenever it changes
   useEffect(() => {
@@ -320,7 +315,7 @@ function App() {
 
   // Load all users when admin tab is accessed
   useEffect(() => {
-    if (activeTab === 'admin' && userRole === 'admin') {
+    if (activeTab === 'admin' && (userRole === 'admin' || userRole === 'super_admin')) {
       loadAllUsers()
     }
   }, [activeTab, userRole])
@@ -1150,9 +1145,10 @@ function App() {
     }
   }
 
-  // Load pending timesheets (admin only)
+  // Load pending timesheets (admin and super admin)
   const loadPendingTimesheets = async () => {
-    if (!user || userRole !== 'admin') return
+    console.log('loadPendingTimesheets called - user:', user, 'userRole:', userRole)
+    if (!user || (userRole !== 'admin' && userRole !== 'super_admin')) return
 
     try {
       console.log('Loading timesheets with filter:', timesheetFilter)
@@ -1167,10 +1163,12 @@ function App() {
         .order('submitted_at', { ascending: false })
 
       // Also load all timesheets for accurate counts
-      const { data: allData } = await supabase
+      const { data: allData, error: allDataError } = await supabase
         .from('work_sessions')
         .select('*')
         .in('status', ['draft', 'submitted', 'approved', 'rejected'])
+
+      console.log('allData query result:', { allData, allDataError })
 
       if (error) {
         console.error('Error loading timesheets:', error)
@@ -1183,7 +1181,7 @@ function App() {
       // Process filtered timesheets
       if (!data || data.length === 0) {
         console.log('No timesheets found with filter:', timesheetFilter)
-        setPendingTimesheets([])
+        // Timesheets will be displayed using allTimesheets with filtering in the render
       } else {
         // Get user names from user_roles table
         const userIds = [...new Set(data.map((s: any) => s.user_id))]
@@ -1248,25 +1246,72 @@ function App() {
 
         const timesheets = Object.values(grouped)
         console.log('Grouped timesheets:', timesheets)
-        setPendingTimesheets(timesheets)
+        // Timesheets will be displayed using allTimesheets with filtering in the render
       }
 
-      // Process all timesheets for counts
+      // Process all timesheets for display and counts
       if (allData && allData.length > 0) {
+        // Get user names for all timesheets
+        const allUserIds = [...new Set(allData.map((s: any) => s.user_id))]
+        const { data: allUserRoles } = await supabase
+          .from('user_roles')
+          .select('user_id, full_name, email')
+          .in('user_id', allUserIds)
+        
+        const allUserNameMap = new Map()
+        if (allUserRoles) {
+          allUserRoles.forEach((u: any) => {
+            allUserNameMap.set(u.user_id, u.full_name || u.email)
+          })
+        }
+
+        // Load materials for all sessions
+        const allSessionIds = allData.map((s: any) => s.id)
+        const { data: allSessionMaterialsData } = await supabase
+          .from('session_materials')
+          .select(`
+            *,
+            materials (name, unit)
+          `)
+          .in('session_id', allSessionIds)
+        
+        const allMaterialsMap = new Map()
+        if (allSessionMaterialsData) {
+          allSessionMaterialsData.forEach((sm: any) => {
+            if (!allMaterialsMap.has(sm.session_id)) {
+              allMaterialsMap.set(sm.session_id, [])
+            }
+            allMaterialsMap.get(sm.session_id).push(sm)
+          })
+        }
+
         const allGrouped = (allData || []).reduce((acc: any, session: any) => {
           const key = `${session.user_id}-${session.week_ending_date || 'no-week'}`
           if (!acc[key]) {
             acc[key] = {
+              userId: session.user_id,
+              userName: allUserNameMap.get(session.user_id) || 'Unknown User',
+              weekEndingDate: session.week_ending_date,
               status: session.status,
+              employeeInitials: session.employee_initials,
+              submittedAt: session.submitted_at,
+              sessions: [],
               totalMinutes: 0
             }
           }
+          const sessionWithMaterials = {
+            ...session,
+            materials: allMaterialsMap.get(session.id) || []
+          }
+          acc[key].sessions.push(sessionWithMaterials)
           acc[key].totalMinutes += session.duration || 0
           return acc
         }, {})
         
+        console.log('Setting allTimesheets with:', Object.values(allGrouped))
         setAllTimesheets(Object.values(allGrouped))
       } else {
+        console.log('No allData, setting allTimesheets to []')
         setAllTimesheets([])
       }
     } catch (error) {
@@ -1277,7 +1322,13 @@ function App() {
 
   // Approve timesheet
   const approveTimesheet = async (timesheet: any) => {
-    if (!user || userRole !== 'admin') return
+    if (!user || (userRole !== 'admin' && userRole !== 'super_admin')) return
+
+    // Admins cannot approve their own timesheets - only super admins can
+    if (userRole === 'admin' && timesheet.userId === user.id) {
+      showToast('You cannot approve your own timesheet. Only super admins can approve admin timesheets.', 'warning')
+      return
+    }
 
     try {
       setIsProcessingTimesheet(true)
@@ -1313,7 +1364,14 @@ function App() {
 
   // Reject timesheet
   const rejectTimesheet = async (timesheet: any) => {
-    if (!user || userRole !== 'admin') return
+    if (!user || (userRole !== 'admin' && userRole !== 'super_admin')) return
+    
+    // Admins cannot reject their own timesheets - only super admins can
+    if (userRole === 'admin' && timesheet.userId === user.id) {
+      showToast('You cannot reject your own timesheet. Only super admins can manage admin timesheets.', 'warning')
+      return
+    }
+    
     if (!adminNotes.trim()) {
       showToast('Please provide a reason for rejection', 'warning')
       return
@@ -1371,7 +1429,7 @@ function App() {
         setEditingSession(null)
         
         // Reload sessions
-        if (userRole === 'admin') {
+        if (userRole === 'admin' || userRole === 'super_admin') {
           loadPendingTimesheets()
         }
         
@@ -1464,8 +1522,8 @@ function App() {
             setShowEditModal(false)
             setEditingSession(null)
             
-            // Reload sessions if admin (for pending timesheets view)
-            if (userRole === 'admin') {
+            // Reload sessions if admin or super admin (for pending timesheets view)
+            if (userRole === 'admin' || userRole === 'super_admin') {
               loadPendingTimesheets()
             }
           }
@@ -1541,7 +1599,9 @@ function App() {
 
   // Load timesheets when admin tab is active
   useEffect(() => {
-    if (userRole === 'admin' && activeTab === 'admin') {
+    console.log('useEffect triggered - userRole:', userRole, 'activeTab:', activeTab, 'timesheetFilter:', timesheetFilter)
+    if ((userRole === 'admin' || userRole === 'super_admin') && activeTab === 'admin') {
+      console.log('Calling loadPendingTimesheets()')
       loadPendingTimesheets()
     }
   }, [userRole, activeTab, timesheetFilter])
@@ -2313,7 +2373,7 @@ function App() {
         const activeProjects = projects.filter(p => p.status === 'active')
         
         // Employee view - Read-only project list
-        if (userRole !== 'admin') {
+        if (userRole !== 'admin' && userRole !== 'super_admin') {
           return (
             <div className="tab-content">
               <div className="live-projects-container">
@@ -2790,8 +2850,8 @@ function App() {
           </div>
         )
       case 'materials':
-        // Admin-only Materials tab
-        if (userRole !== 'admin') {
+        // Admin and Super Admin Materials tab
+        if (userRole !== 'admin' && userRole !== 'super_admin') {
           return null
         }
 
@@ -3051,9 +3111,9 @@ function App() {
           </div>
         )
       case 'history':
-        // Admin-only History tab - Show completed projects
-        if (userRole !== 'admin') {
-          return null // History tab is admin-only
+        // Admin and Super Admin History tab - Show completed projects
+        if (userRole !== 'admin' && userRole !== 'super_admin') {
+          return null // History tab is admin and super admin only
         }
 
         const completedProjects = projects.filter(p => p.status === 'completed')
@@ -3111,7 +3171,7 @@ function App() {
           </div>
         )
       case 'admin':
-        if (userRole !== 'admin') {
+        if (userRole !== 'admin' && userRole !== 'super_admin') {
           return (
             <div className="tab-content">
               <div className="admin-container">
@@ -3129,6 +3189,23 @@ function App() {
         const pendingUsers = allUsers.filter(u => u.role === 'user')
         const approvedUsers = allUsers.filter(u => u.role === 'approved')
         const adminUsers = allUsers.filter(u => u.role === 'admin')
+        const superAdminUsers = allUsers.filter(u => u.role === 'super_admin')
+
+        // Filter timesheets based on role
+        // Super admin sees ALL timesheets (employees + admins)
+        // Regular admin only sees employee timesheets (approved users only)
+        const filteredTimesheets = userRole === 'super_admin'
+          ? allTimesheets // Super admin sees everything
+          : allTimesheets.filter((t: any) => {
+              // Regular admin: find the user and check if they're an employee (approved role)
+              const timesheetUser = allUsers.find(u => u.user_id === t.userId)
+              return timesheetUser && timesheetUser.role === 'approved'
+            })
+
+        // Apply status filter on the filtered timesheets
+        const displayTimesheets = timesheetFilter === 'all'
+          ? filteredTimesheets
+          : filteredTimesheets.filter((t: any) => t.status === timesheetFilter)
 
         return (
           <div className="tab-content">
@@ -3148,41 +3225,47 @@ function App() {
                     className={`filter-btn ${timesheetFilter === 'submitted' ? 'active' : ''}`}
                     onClick={() => setTimesheetFilter('submitted')}
                   >
-                    Pending Approval ({allTimesheets.filter((t: any) => t.status === 'submitted').length})
+                    Pending Approval ({filteredTimesheets.filter((t: any) => t.status === 'submitted').length})
                   </button>
                   <button 
                     className={`filter-btn ${timesheetFilter === 'approved' ? 'active' : ''}`}
                     onClick={() => setTimesheetFilter('approved')}
                   >
-                    Approved ({allTimesheets.filter((t: any) => t.status === 'approved').length})
+                    Approved ({filteredTimesheets.filter((t: any) => t.status === 'approved').length})
                   </button>
                   <button 
                     className={`filter-btn ${timesheetFilter === 'rejected' ? 'active' : ''}`}
                     onClick={() => setTimesheetFilter('rejected')}
                   >
-                    Rejected ({allTimesheets.filter((t: any) => t.status === 'rejected').length})
+                    Rejected ({filteredTimesheets.filter((t: any) => t.status === 'rejected').length})
                   </button>
                   <button 
                     className={`filter-btn ${timesheetFilter === 'all' ? 'active' : ''}`}
                     onClick={() => setTimesheetFilter('all')}
                   >
-                    All ({allTimesheets.length})
+                    All ({filteredTimesheets.length})
                   </button>
                 </div>
 
                 {/* Timesheets List */}
-                {pendingTimesheets.length > 0 ? (
+                {displayTimesheets.length > 0 ? (
                   <div className="timesheets-list">
-                    {pendingTimesheets.map((timesheet: any, index: number) => {
+                    {displayTimesheets.map((timesheet: any, index: number) => {
                       const hours = Math.floor(timesheet.totalMinutes / 60)
                       const minutes = timesheet.totalMinutes % 60
                       const isSelected = selectedTimesheet === timesheet
+                      
+                      // Get the user's role for display (only for super admin)
+                      const timesheetUser = allUsers.find(u => u.user_id === timesheet.userId)
+                      const userRoleBadge = timesheetUser?.role === 'admin' ? '(Admin)' : timesheetUser?.role === 'super_admin' ? '(Super Admin)' : ''
                       
                       return (
                         <div key={index} className={`timesheet-card ${timesheet.status}`}>
                           <div className="timesheet-header" onClick={() => setSelectedTimesheet(isSelected ? null : timesheet)}>
                             <div className="timesheet-user">
-                              <div className="timesheet-name">{timesheet.userName}</div>
+                              <div className="timesheet-name">
+                                {timesheet.userName} {userRole === 'super_admin' && userRoleBadge && <span style={{ color: '#3b82f6', fontWeight: 600 }}>{userRoleBadge}</span>}
+                              </div>
                               <div className="timesheet-initials">Initials: {timesheet.employeeInitials || 'N/A'}</div>
                             </div>
                             <div className="timesheet-details">
@@ -3268,35 +3351,45 @@ function App() {
 
                               {/* Admin Actions */}
                               {timesheet.status === 'submitted' && (
-                                <div className="admin-actions">
-                                  <div className="admin-notes-input">
-                                    <label>Admin Notes (optional for approval, required for rejection):</label>
-                                    <textarea
-                                      value={adminNotes}
-                                      onChange={(e) => setAdminNotes(e.target.value)}
-                                      placeholder="Add notes about this timesheet..."
-                                      rows={3}
-                                    />
-                                  </div>
-                                  <div className="action-buttons">
-                                    <button
-                                      className="approve-timesheet-btn"
-                                      onClick={() => approveTimesheet(timesheet)}
-                                      disabled={isProcessingTimesheet}
-                                    >
-                                      <CheckCircle size={16} />
-                                      {isProcessingTimesheet ? 'Processing...' : 'Approve Timesheet'}
-                                    </button>
-                                    <button
-                                      className="reject-timesheet-btn"
-                                      onClick={() => rejectTimesheet(timesheet)}
-                                      disabled={isProcessingTimesheet || !adminNotes.trim()}
-                                    >
-                                      <XCircle size={16} />
-                                      {isProcessingTimesheet ? 'Processing...' : 'Reject Timesheet'}
-                                    </button>
-                                  </div>
-                                </div>
+                                <>
+                                  {/* Admins cannot approve/reject their own timesheets */}
+                                  {userRole === 'admin' && timesheet.userId === user?.id ? (
+                                    <div className="self-approval-notice">
+                                      <AlertCircle size={16} />
+                                      <p>You cannot approve your own timesheet. A super admin must review this.</p>
+                                    </div>
+                                  ) : (
+                                    <div className="admin-actions">
+                                      <div className="admin-notes-input">
+                                        <label>Admin Notes (optional for approval, required for rejection):</label>
+                                        <textarea
+                                          value={adminNotes}
+                                          onChange={(e) => setAdminNotes(e.target.value)}
+                                          placeholder="Add notes about this timesheet..."
+                                          rows={3}
+                                        />
+                                      </div>
+                                      <div className="action-buttons">
+                                        <button
+                                          className="approve-timesheet-btn"
+                                          onClick={() => approveTimesheet(timesheet)}
+                                          disabled={isProcessingTimesheet}
+                                        >
+                                          <CheckCircle size={16} />
+                                          {isProcessingTimesheet ? 'Processing...' : 'Approve Timesheet'}
+                                        </button>
+                                        <button
+                                          className="reject-timesheet-btn"
+                                          onClick={() => rejectTimesheet(timesheet)}
+                                          disabled={isProcessingTimesheet || !adminNotes.trim()}
+                                        >
+                                          <XCircle size={16} />
+                                          {isProcessingTimesheet ? 'Processing...' : 'Reject Timesheet'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
                               )}
 
                               {/* Show admin notes for approved/rejected */}
@@ -3371,9 +3464,9 @@ function App() {
               
               {/* Approved Users Section */}
               <div className="admin-section">
-                <h3>Approved Users ({approvedUsers.length + adminUsers.length})</h3>
+                <h3>Approved Users ({approvedUsers.length + adminUsers.length + superAdminUsers.length})</h3>
                 <div className="users-list">
-                  {[...adminUsers, ...approvedUsers].map((userItem) => (
+                  {[...superAdminUsers, ...adminUsers, ...approvedUsers].map((userItem) => (
                     <div key={userItem.id} className="user-card">
                       <div className="user-details-admin">
                         <div className="user-name">{userItem.full_name}</div>
@@ -3388,11 +3481,17 @@ function App() {
                         <select
                           value={userItem.role}
                           onChange={async (e) => {
-                            const newRole = e.target.value as 'user' | 'approved' | 'admin'
+                            const newRole = e.target.value as 'user' | 'approved' | 'admin' | 'super_admin'
                             
                             // Prevent demoting yourself
-                            if (userItem.user_id === user?.id && newRole !== 'admin') {
+                            if (userItem.user_id === user?.id && (newRole !== 'admin' && newRole !== 'super_admin')) {
                               showToast('You cannot demote yourself!', 'error')
+                              return
+                            }
+                            
+                            // Only super admin can promote to super_admin
+                            if (newRole === 'super_admin' && userRole !== 'super_admin') {
+                              showToast('Only Super Admins can promote users to Super Admin', 'error')
                               return
                             }
                             
@@ -3401,7 +3500,8 @@ function App() {
                               const roleLabels = {
                                 user: 'Unapproved',
                                 approved: 'Approved',
-                                admin: 'Admin'
+                                admin: 'Admin',
+                                super_admin: 'Super Admin'
                               }
                               showToast(`Updated ${userItem.full_name}'s role to ${roleLabels[newRole]}`, 'success')
                               await loadAllUsers()
@@ -3415,11 +3515,12 @@ function App() {
                           <option value="user">Unapproved</option>
                           <option value="approved">Approved</option>
                           <option value="admin">Admin</option>
+                          {userRole === 'super_admin' && <option value="super_admin">Super Admin</option>}
                         </select>
                       </div>
                     </div>
                   ))}
-                  {approvedUsers.length === 0 && adminUsers.length === 0 && (
+                  {approvedUsers.length === 0 && adminUsers.length === 0 && superAdminUsers.length === 0 && (
                     <div className="no-users">
                       <p>No approved users yet.</p>
                     </div>
@@ -3430,8 +3531,8 @@ function App() {
           </div>
         )
       case 'roles':
-        // Admin-only Roles tab
-        if (userRole !== 'admin') {
+        // Admin and Super Admin Roles tab
+        if (userRole !== 'admin' && userRole !== 'super_admin') {
           return null
         }
 
@@ -3661,6 +3762,234 @@ function App() {
             </div>
           </div>
         )
+      case 'timesheet':
+        // My Hours view for admins/super admins - same as employee hours view
+        // Use only database sessions (they're already saved when clocking out)
+        const myAllSessions = weeklySessions
+        
+        // Calculate week totals (all completed sessions)
+        const myCompletedSessions = myAllSessions.filter(s => s.duration)
+        
+        // Create Monday through Sunday breakdown
+        const myStartOfWeek = new Date()
+        const myDayOfWeek = myStartOfWeek.getDay()
+        const myDiff = myDayOfWeek === 0 ? -6 : 1 - myDayOfWeek // If Sunday, go back 6 days, otherwise go to Monday
+        myStartOfWeek.setDate(myStartOfWeek.getDate() + myDiff)
+        myStartOfWeek.setHours(0, 0, 0, 0)
+        
+        const myDaysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        const myWeekDays = myDaysOfWeek.map((dayName, index) => {
+          const dayDate = new Date(myStartOfWeek)
+          dayDate.setDate(myStartOfWeek.getDate() + index)
+          
+          const daySessions = myCompletedSessions.filter(session => 
+            session.startTime.toDateString() === dayDate.toDateString()
+          )
+          
+          const totalMinutes = daySessions.reduce((total, session) => total + (session.duration || 0), 0)
+          
+          return {
+            name: dayName,
+            date: dayDate,
+            sessions: daySessions,
+            totalMinutes,
+            isToday: dayDate.toDateString() === new Date().toDateString()
+          }
+        })
+
+        return (
+          <div className="tab-content">
+            <div className="hours-container">
+              <div className="hours-header">
+                <h2>My Time Tracking</h2>
+                <button
+                  className="add-session-icon-btn"
+                  onClick={() => setShowAddSessionModal(true)}
+                  title="Add Session Manually"
+                >
+                  <Plus size={24} />
+                </button>
+              </div>
+
+              {/* Monday through Sunday Breakdown */}
+              <div className="weekly-breakdown">
+                <div className="weekly-list">
+                  {myWeekDays.map((day) => {
+                    const hours = Math.floor(day.totalMinutes / 60)
+                    const minutes = day.totalMinutes % 60
+                    
+                    // Use day.sessions which already has the sessions for this day
+                    // Filter to only show sessions with duration (completed sessions)
+                    const daySessions = day.sessions.filter(s => s.duration !== undefined && s.endTime !== undefined)
+                    
+                    return (
+                      <div key={day.name} className={`weekly-day-item ${day.isToday ? 'today' : ''} ${day.sessions.length === 0 ? 'empty-day' : ''}`}>
+                        <div className="weekly-day-header">
+                          <div className="weekly-day-name">
+                            {day.name} {day.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            {day.isToday && <span className="today-badge">Today</span>}
+                          </div>
+                          <div className="weekly-day-time">
+                            {day.sessions.length > 0 ? `${hours}h ${minutes}m` : '—'}
+                          </div>
+                        </div>
+                        
+                        {/* Show individual sessions for this day */}
+                        {daySessions.length > 0 && (
+                          <div className="day-sessions-list">
+                            {daySessions.map((session) => (
+                              <div key={session.id} className={`day-session-card status-${session.status}`}>
+                                <div className="session-time-range">
+                                  {session.startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {session.endTime?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                </div>
+                                <div className="session-project-role">
+                                  <strong>{session.project}</strong> • {session.role}
+                                </div>
+                                {session.notes && (
+                                  <div className="session-notes-display">
+                                    📝 {session.notes}
+                                  </div>
+                                )}
+                                <div className="session-duration-status">
+                                  <span className="session-duration">{Math.floor((session.duration || 0) / 60)}h {(session.duration || 0) % 60}m</span>
+                                  <span className={`session-status-badge ${session.status}`}>
+                                    {session.status === 'draft' ? '✏️ Draft' : 
+                                     session.status === 'submitted' ? '⏳ Submitted' : 
+                                     session.status === 'approved' ? '✅ Approved' : 
+                                     '❌ Rejected'}
+                                  </span>
+                                </div>
+                                
+                                {/* Edit/Delete buttons only for draft sessions */}
+                                {session.status === 'draft' && (
+                                  <div className="session-actions">
+                                    <button
+                                      className="edit-session-btn"
+                                      onClick={() => {
+                                        setEditingSession(session)
+                                        setShowEditModal(true)
+                                      }}
+                                      title="Edit Session"
+                                    >
+                                      <Edit2 size={14} /> Edit
+                                    </button>
+                                    <button
+                                      className="delete-session-btn"
+                                      onClick={() => deleteSession(session.id)}
+                                      title="Delete Session"
+                                    >
+                                      <Trash2 size={14} /> Delete
+                                    </button>
+                                  </div>
+                                )}
+                                
+                                {/* Show admin notes for rejected sessions */}
+                                {session.status === 'rejected' && session.adminNotes && (
+                                  <div className="session-admin-notes">
+                                    <AlertCircle size={14} />
+                                    <span><strong>Admin:</strong> {session.adminNotes}</span>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Timesheet Submission */}
+              {weeklySessions.length > 0 && (
+                <div className="timesheet-submission">
+                  <h3>Weekly Timesheet Submission</h3>
+                  
+                  {/* Show status badges */}
+                  <div className="status-summary">
+                    {weeklySessions.filter(s => s.status === 'draft' && s.duration && s.endTime).length > 0 && (
+                      <div className="status-badge draft">
+                        {weeklySessions.filter(s => s.status === 'draft' && s.duration && s.endTime).length} sessions pending submission
+                      </div>
+                    )}
+                    {weeklySessions.filter(s => s.status === 'submitted').length > 0 && (
+                      <div className="status-badge submitted">
+                        {weeklySessions.filter(s => s.status === 'submitted').length} sessions awaiting approval
+                      </div>
+                    )}
+                    {weeklySessions.filter(s => s.status === 'approved').length > 0 && (
+                      <div className="status-badge approved">
+                        {weeklySessions.filter(s => s.status === 'approved').length} sessions approved
+                      </div>
+                    )}
+                    {weeklySessions.filter(s => s.status === 'rejected').length > 0 && (
+                      <div className="status-badge rejected">
+                        {weeklySessions.filter(s => s.status === 'rejected').length} sessions rejected
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Submission form - only show if there are draft sessions */}
+                  {weeklySessions.filter(s => s.status === 'draft' && s.duration && s.endTime).length > 0 && (
+                    <div className="submission-form">
+                      <p className="submission-instructions">
+                        Review your hours for the entire week above, then submit your timesheet for admin approval.
+                        All sessions will be submitted together. Your initials will be recorded with this submission.
+                      </p>
+                      <div className="initials-input-group">
+                        <label htmlFor="initials">Your Initials:</label>
+                        <input
+                          id="initials"
+                          type="text"
+                          value={employeeInitials}
+                          onChange={(e) => setEmployeeInitials(e.target.value.toUpperCase())}
+                          placeholder="e.g. JP"
+                          maxLength={3}
+                          className="initials-input"
+                          disabled={isSubmitting}
+                        />
+                        <button
+                          onClick={submitTimesheet}
+                          disabled={isSubmitting || !employeeInitials.trim()}
+                          className="submit-timesheet-btn"
+                        >
+                          {isSubmitting ? 'Submitting...' : 'Submit Weekly Timesheet'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Show message if all submitted/approved */}
+                  {weeklySessions.filter(s => s.status === 'draft').length === 0 && (
+                    <div className="submission-complete">
+                      <CheckCircle size={24} />
+                      <p>All sessions for this week have been submitted or approved.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Current Status */}
+              <div className="current-status-card">
+                <h3>Current Status</h3>
+                <div className="status-content">
+                  <div className="status-indicator-large">
+                    {isWorking ? 'Currently Working' : 'Off Clock'}
+                  </div>
+                  {isWorking && currentLocation && (
+                    <div className="status-details">
+                      <div>Location: {currentLocation}</div>
+                      {currentRole && <div>Role: {currentRole}</div>}
+                      {workStartTime && (
+                        <div>Started: {formatTime(workStartTime)} ({Math.floor((new Date().getTime() - workStartTime.getTime()) / 1000 / 60)} minutes ago)</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )
       default:
         return null
     }
@@ -3773,42 +4102,56 @@ function App() {
 
       {/* Bottom Navigation */}
       <nav className="bottom-nav">
-        {userRole === 'admin' ? (
-          // Admin-only navigation: Admin, Projects, Materials, Roles, History
+        {userRole === 'admin' || userRole === 'super_admin' ? (
+          // Admin/Super Admin navigation: Clock, My Hours, Admin, Projects, Materials, Roles, History
           <>
+            <button 
+              className={`nav-item ${activeTab === 'clock' ? 'active' : ''}`}
+              onClick={() => setActiveTab('clock')}
+            >
+              <Clock size={20} />
+              <span>Clock</span>
+            </button>
+            <button 
+              className={`nav-item ${activeTab === 'timesheet' ? 'active' : ''}`}
+              onClick={() => setActiveTab('timesheet')}
+            >
+              <FileText size={20} />
+              <span>My Hours</span>
+            </button>
             <button 
               className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
               onClick={() => setActiveTab('admin')}
             >
-              <Shield size={24} />
+              <Shield size={20} />
               <span>Admin</span>
             </button>
             <button 
               className={`nav-item ${activeTab === 'projects' ? 'active' : ''}`}
               onClick={() => setActiveTab('projects')}
             >
-              <Calendar size={24} />
+              <Calendar size={20} />
               <span>Projects</span>
             </button>
             <button 
               className={`nav-item ${activeTab === 'materials' ? 'active' : ''}`}
               onClick={() => setActiveTab('materials')}
             >
-              <Package size={24} />
+              <Package size={20} />
               <span>Materials</span>
             </button>
             <button 
               className={`nav-item ${activeTab === 'roles' ? 'active' : ''}`}
               onClick={() => setActiveTab('roles')}
             >
-              <Users size={24} />
+              <Users size={20} />
               <span>Roles</span>
             </button>
             <button 
               className={`nav-item ${activeTab === 'history' ? 'active' : ''}`}
               onClick={() => setActiveTab('history')}
             >
-              <History size={24} />
+              <History size={20} />
               <span>History</span>
             </button>
           </>
