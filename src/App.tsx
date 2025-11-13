@@ -1072,7 +1072,7 @@ function App() {
       console.log('Before conversion - weeklySessions:', weeklySessions.map(s => ({ id: s.id, status: s.status, duration: s.duration, endTime: s.endTime })))
       
       if (rejectedSessions.length === 0) {
-        showToast('No rejected sessions to convert', 'info')
+        showToast('No rejected sessions to convert', 'warning')
         return
       }
       
