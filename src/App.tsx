@@ -5,7 +5,7 @@ import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
 import AccessDenied from './components/AccessDenied'
 import './App.css'
 
-type TabType = 'clock' | 'projects' | 'hours' | 'my-materials' | 'history' | 'admin' | 'materials' | 'roles'
+type TabType = 'clock' | 'projects' | 'hours' | 'my-materials' | 'history' | 'admin' | 'materials' | 'roles' | 'timesheet'
 
 function App() {
   // Initialize activeTab from localStorage, or default to 'clock'
