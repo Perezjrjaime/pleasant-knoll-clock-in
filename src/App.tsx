@@ -103,6 +103,13 @@ function App() {
   const [selectedTimesheet, setSelectedTimesheet] = useState<any | null>(null)
   const [adminNotes, setAdminNotes] = useState('')
   const [isProcessingTimesheet, setIsProcessingTimesheet] = useState(false)
+  
+  // Timesheet date filtering and pagination
+  const [timesheetDateFilter, setTimesheetDateFilter] = useState<'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth' | 'custom'>('thisWeek')
+  const [customStartDate, setCustomStartDate] = useState('')
+  const [customEndDate, setCustomEndDate] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
 
   // Session editing state
   const [editingSession, setEditingSession] = useState<any | null>(null)
@@ -1219,6 +1226,59 @@ function App() {
     }
   }
 
+  // Helper function to get date range based on filter
+  const getDateRange = () => {
+    const now = new Date()
+    let startDate = new Date()
+    let endDate = new Date()
+    
+    switch (timesheetDateFilter) {
+      case 'thisWeek':
+        // Monday of this week
+        const dayOfWeek = now.getDay()
+        const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+        startDate.setDate(now.getDate() + diff)
+        startDate.setHours(0, 0, 0, 0)
+        endDate = new Date()
+        endDate.setHours(23, 59, 59, 999)
+        break
+        
+      case 'lastWeek':
+        // Monday of last week
+        const lastWeekDay = now.getDay()
+        const lastWeekDiff = lastWeekDay === 0 ? -6 : 1 - lastWeekDay
+        startDate.setDate(now.getDate() + lastWeekDiff - 7)
+        startDate.setHours(0, 0, 0, 0)
+        endDate = new Date(startDate)
+        endDate.setDate(startDate.getDate() + 6)
+        endDate.setHours(23, 59, 59, 999)
+        break
+        
+      case 'thisMonth':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+        break
+        
+      case 'lastMonth':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999)
+        break
+        
+      case 'custom':
+        if (customStartDate) {
+          startDate = new Date(customStartDate)
+          startDate.setHours(0, 0, 0, 0)
+        }
+        if (customEndDate) {
+          endDate = new Date(customEndDate)
+          endDate.setHours(23, 59, 59, 999)
+        }
+        break
+    }
+    
+    return { startDate, endDate }
+  }
+
   // Load pending timesheets (admin and super admin)
   const loadPendingTimesheets = async () => {
     console.log('loadPendingTimesheets called - user:', user, 'userRole:', userRole)
@@ -1227,20 +1287,41 @@ function App() {
     try {
       console.log('Loading timesheets with filter:', timesheetFilter)
       
-      // Load filtered timesheets for display
-      const { data, error } = await supabase
+      // Get date range
+      const { startDate, endDate } = getDateRange()
+      
+      // Load filtered timesheets for display with date range
+      let query = supabase
         .from('work_sessions')
         .select('*')
         .in('status', timesheetFilter === 'all' 
           ? ['draft', 'submitted', 'approved', 'rejected'] 
           : [timesheetFilter])
-        .order('submitted_at', { ascending: false })
+      
+      // Apply date filtering
+      if (timesheetDateFilter !== 'custom' || (customStartDate && customEndDate)) {
+        query = query
+          .gte('start_time', startDate.toISOString())
+          .lte('start_time', endDate.toISOString())
+      }
+      
+      query = query.order('submitted_at', { ascending: false })
+      
+      const { data, error } = await query
 
-      // Also load all timesheets for accurate counts
-      const { data: allData, error: allDataError } = await supabase
+      // Also load all timesheets for accurate counts (with same date filter)
+      let allQuery = supabase
         .from('work_sessions')
         .select('*')
         .in('status', ['draft', 'submitted', 'approved', 'rejected'])
+      
+      if (timesheetDateFilter !== 'custom' || (customStartDate && customEndDate)) {
+        allQuery = allQuery
+          .gte('start_time', startDate.toISOString())
+          .lte('start_time', endDate.toISOString())
+      }
+      
+      const { data: allData, error: allDataError } = await allQuery
 
       console.log('allData query result:', { allData, allDataError })
 
@@ -1742,8 +1823,9 @@ function App() {
     if ((userRole === 'admin' || userRole === 'super_admin') && activeTab === 'admin') {
       console.log('Calling loadPendingTimesheets()')
       loadPendingTimesheets()
+      setCurrentPage(1) // Reset to first page when filters change
     }
-  }, [userRole, activeTab, timesheetFilter])
+  }, [userRole, activeTab, timesheetFilter, timesheetDateFilter, customStartDate, customEndDate])
 
   // Materials Management Functions
   
@@ -3413,38 +3495,117 @@ function App() {
                   Timesheet Management
                 </h3>
                 
-                {/* Filter Buttons */}
-                <div className="timesheet-filters">
-                  <button 
-                    className={`filter-btn ${timesheetFilter === 'submitted' ? 'active' : ''}`}
-                    onClick={() => setTimesheetFilter('submitted')}
-                  >
-                    Pending Approval ({filteredTimesheets.filter((t: any) => t.status === 'submitted').length})
-                  </button>
-                  <button 
-                    className={`filter-btn ${timesheetFilter === 'approved' ? 'active' : ''}`}
-                    onClick={() => setTimesheetFilter('approved')}
-                  >
-                    Approved ({filteredTimesheets.filter((t: any) => t.status === 'approved').length})
-                  </button>
-                  <button 
-                    className={`filter-btn ${timesheetFilter === 'rejected' ? 'active' : ''}`}
-                    onClick={() => setTimesheetFilter('rejected')}
-                  >
-                    Rejected ({filteredTimesheets.filter((t: any) => t.status === 'rejected').length})
-                  </button>
-                  <button 
-                    className={`filter-btn ${timesheetFilter === 'all' ? 'active' : ''}`}
-                    onClick={() => setTimesheetFilter('all')}
-                  >
-                    All ({filteredTimesheets.length})
-                  </button>
+                {/* Compact Filter Row */}
+                <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap' }}>
+                  {/* Status Filter Buttons */}
+                  <div className="timesheet-filters" style={{ display: 'flex', gap: '8px' }}>
+                    <button 
+                      className={`filter-btn ${timesheetFilter === 'submitted' ? 'active' : ''}`}
+                      onClick={() => setTimesheetFilter('submitted')}
+                    >
+                      Pending Approval ({filteredTimesheets.filter((t: any) => t.status === 'submitted').length})
+                    </button>
+                    <button 
+                      className={`filter-btn ${timesheetFilter === 'approved' ? 'active' : ''}`}
+                      onClick={() => setTimesheetFilter('approved')}
+                    >
+                      Approved ({filteredTimesheets.filter((t: any) => t.status === 'approved').length})
+                    </button>
+                    <button 
+                      className={`filter-btn ${timesheetFilter === 'rejected' ? 'active' : ''}`}
+                      onClick={() => setTimesheetFilter('rejected')}
+                    >
+                      Rejected ({filteredTimesheets.filter((t: any) => t.status === 'rejected').length})
+                    </button>
+                    <button 
+                      className={`filter-btn ${timesheetFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setTimesheetFilter('all')}
+                    >
+                      All ({filteredTimesheets.length})
+                    </button>
+                  </div>
+
+                  {/* Date Range Section */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: '#666', whiteSpace: 'nowrap', minWidth: '85px' }}>Date Range:</label>
+                      <select
+                        value={timesheetDateFilter}
+                        onChange={(e) => { 
+                          setTimesheetDateFilter(e.target.value as any); 
+                          setCurrentPage(1); 
+                        }}
+                        style={{ 
+                          padding: '8px 12px', 
+                          borderRadius: '6px', 
+                          border: '1px solid #ddd',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          backgroundColor: 'white',
+                          minWidth: '150px'
+                        }}
+                      >
+                        <option value="thisWeek">This Week</option>
+                        <option value="lastWeek">Last Week</option>
+                        <option value="thisMonth">This Month</option>
+                        <option value="lastMonth">Last Month</option>
+                        <option value="custom">Custom Range</option>
+                      </select>
+                    </div>
+                    
+                    {/* Custom Date Range Inputs */}
+                    {timesheetDateFilter === 'custom' && (
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginLeft: '0px' }}>
+                        <input
+                          type="date"
+                          value={customStartDate}
+                          onChange={(e) => setCustomStartDate(e.target.value)}
+                          style={{ 
+                            padding: '8px 12px', 
+                            borderRadius: '6px', 
+                            border: '1px solid #ddd', 
+                            fontSize: '14px'
+                          }}
+                        />
+                        <span style={{ color: '#666', fontWeight: '500' }}>to</span>
+                        <input
+                          type="date"
+                          value={customEndDate}
+                          onChange={(e) => setCustomEndDate(e.target.value)}
+                          style={{ 
+                            padding: '8px 12px', 
+                            borderRadius: '6px', 
+                            border: '1px solid #ddd', 
+                            fontSize: '14px'
+                          }}
+                        />
+                        <button 
+                          className="filter-btn"
+                          onClick={() => { setCurrentPage(1); loadPendingTimesheets(); }}
+                          disabled={!customStartDate || !customEndDate}
+                          style={{ 
+                            opacity: (!customStartDate || !customEndDate) ? 0.5 : 1,
+                            cursor: (!customStartDate || !customEndDate) ? 'not-allowed' : 'pointer',
+                            padding: '8px 16px'
+                          }}
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Timesheets List */}
                 {displayTimesheets.length > 0 ? (
-                  <div className="timesheets-list">
-                    {displayTimesheets.map((timesheet: any, index: number) => {
+                  <>
+                    {/* Pagination Info */}
+                    <div style={{ marginBottom: '15px', fontSize: '14px', color: '#666' }}>
+                      Showing {Math.min((currentPage - 1) * itemsPerPage + 1, displayTimesheets.length)} - {Math.min(currentPage * itemsPerPage, displayTimesheets.length)} of {displayTimesheets.length} timesheets
+                    </div>
+                    
+                    <div className="timesheets-list">
+                    {displayTimesheets.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((timesheet: any, index: number) => {
                       const totalMinutes = timesheet.totalMinutes
                       const lunchMinutes = timesheet.sessions.filter((s: any) => s.project === 'Lunch').reduce((sum: number, s: any) => sum + (s.duration || 0), 0)
                       const workMinutes = totalMinutes - lunchMinutes
@@ -3613,6 +3774,54 @@ function App() {
                       )
                     })}
                   </div>
+                  
+                  {/* Pagination Controls */}
+                  {displayTimesheets.length > itemsPerPage && (
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'center', 
+                      alignItems: 'center',
+                      gap: '10px',
+                      marginTop: '20px',
+                      paddingTop: '20px',
+                      borderTop: '1px solid #e0e0e0'
+                    }}>
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: '6px',
+                          border: '1px solid #ddd',
+                          backgroundColor: currentPage === 1 ? '#f5f5f5' : '#fff',
+                          cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                          opacity: currentPage === 1 ? 0.5 : 1
+                        }}
+                      >
+                        Previous
+                      </button>
+                      
+                      <span style={{ fontSize: '14px', color: '#666' }}>
+                        Page {currentPage} of {Math.ceil(displayTimesheets.length / itemsPerPage)}
+                      </span>
+                      
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.min(Math.ceil(displayTimesheets.length / itemsPerPage), prev + 1))}
+                        disabled={currentPage >= Math.ceil(displayTimesheets.length / itemsPerPage)}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: '6px',
+                          border: '1px solid #ddd',
+                          backgroundColor: currentPage >= Math.ceil(displayTimesheets.length / itemsPerPage) ? '#f5f5f5' : '#fff',
+                          cursor: currentPage >= Math.ceil(displayTimesheets.length / itemsPerPage) ? 'not-allowed' : 'pointer',
+                          opacity: currentPage >= Math.ceil(displayTimesheets.length / itemsPerPage) ? 0.5 : 1
+                        }}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
+                  </>
                 ) : (
                   <div className="empty-timesheets">
                     <p>No {timesheetFilter !== 'all' ? timesheetFilter : ''} timesheets to display.</p>
@@ -4270,8 +4479,8 @@ function App() {
     )
   }
 
-  // Show Access Denied screen for unapproved users
-  if (session && user && userRole === 'user') {
+  // Show Access Denied screen for unapproved users (but not while still loading role)
+  if (session && user && userRole === 'user' && !loading) {
     return <AccessDenied user={user} onSignOut={handleSignOut} />
   }
 
