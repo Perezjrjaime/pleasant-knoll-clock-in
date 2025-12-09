@@ -1,0 +1,225 @@
+SOFTWARE LICENSE AND SERVICE AGREEMENT
+
+Effective Date: November 21, 2025
+
+Between:
+- Service Provider ("Developer"): Jaime Perez
+- Client: Pleasant Knoll Landscaping LLC
+
+Software: Pleasant Knoll Clock-In Time Tracking System
+
+────────────────────────────────────────────────────────────────
+
+1. PAYMENT TERMS
+
+Initial License Fee: $850
+- Paid to Date: $350 (received)
+- Balance Due: $500 (due upon signing this agreement)
+
+Ongoing Maintenance & Support: $50/hour
+- Billed for time spent on maintenance, bug fixes (after first month), upgrades, and support
+- Invoices sent weekly/monthly as work is completed
+- Payment due within 15 days of invoice date
+
+────────────────────────────────────────────────────────────────
+
+2. LICENSE GRANT
+
+During Service Period
+While Developer is providing hosting and maintenance services:
+- Client receives a non-exclusive license to use the software for their business operations
+- Developer maintains hosting, administration, and super admin access
+- Client does not receive source code during this period
+- License remains active as long as maintenance services continue
+
+Termination & Full Ownership Transfer
+The license and service arrangement terminates and full ownership transfers to Client when:
+- Both parties agree that no further maintenance or support is needed, OR
+- Developer passes away or becomes unable to provide services
+
+Upon termination, Client receives:
+- Complete source code and all files
+- Database schema and documentation
+- Full ownership rights to modify, host, and maintain independently
+- Note: Client will be responsible for hosting the application themselves at their own expense
+
+────────────────────────────────────────────────────────────────
+
+3. SUPPORT & MAINTENANCE
+
+First Month - Free Bug Fixes
+- During the first 30 days from the date of this agreement, Developer will fix any bugs or errors at no charge
+- "Bugs" are defined as features not working as originally intended or described
+
+After First Month - Hourly Support
+After the first 30 days, all support is billed at $50/hour:
+- Bug fixes and troubleshooting
+- Feature upgrades and enhancements
+- Technical support and training
+- System maintenance and updates
+
+Response Time
+Developer will respond to support requests within 2 business days.
+
+────────────────────────────────────────────────────────────────
+
+4. HOSTING & ADMINISTRATION
+
+Developer Responsibilities
+While providing services, Developer will:
+- Host the application on appropriate infrastructure (Supabase, Azure, etc.)
+- Maintain super admin access for administrative purposes
+- Perform routine maintenance and security updates
+- Manage database and application performance
+
+Hosting Costs
+All hosting costs (Supabase, Azure, etc.) are included in the service. Client pays only the hourly rate for Developer's time.
+
+────────────────────────────────────────────────────────────────
+
+5. CONFIDENTIALITY & DATA PRIVACY
+
+Developer's Commitment
+Jaime Perez agrees:
+- To keep all Client data strictly confidential
+- Not to share, sell, or disclose any employee information, timesheet data, or business information
+- Not to access Client data except when providing requested support or maintenance
+- To maintain appropriate security measures to protect Client data
+
+Data Ownership
+- All timesheet data, employee information, and business data belongs to Client
+- Client data will not be used for any purpose other than providing the services outlined in this agreement
+
+────────────────────────────────────────────────────────────────
+
+6. LIABILITY & WARRANTIES
+
+Software Provided "AS-IS"
+Developer provides the software "AS-IS" without warranties of any kind. Developer makes no guarantees that the software will be:
+- Error-free or uninterrupted
+- Fit for any particular purpose
+- Free from all bugs or issues
+
+Limited Liability
+Developer is NOT responsible for:
+- Employee payroll errors or disputes arising from timesheet data
+- Lost profits or business interruptions
+- Data loss (Client should maintain their own records)
+- Issues caused by third-party services (Supabase, Azure, internet providers, etc.)
+- Any employment law compliance issues
+
+Client's Responsibility:
+Client agrees to:
+- Verify all timesheet data before using for payroll
+- Maintain backup records of employee hours
+- Comply with all applicable employment and wage laws
+- Not hold Developer liable for any employment-related disputes
+
+Maximum Liability:
+Developer's total liability under this agreement shall not exceed the total amount Client has paid to Developer in the preceding 6 months.
+
+────────────────────────────────────────────────────────────────
+
+7. SUCCESSION & CONTINUITY
+
+In the Event of Developer's Death or Incapacity
+If Jaime Perez passes away or becomes unable to continue providing services:
+- This agreement automatically terminates
+- Client immediately receives full ownership of the source code
+- Developer's estate or representative will provide all code, documentation, and access credentials within 30 days
+- Client becomes responsible for hosting and maintaining the application independently
+- All outstanding invoices must still be paid to Developer's estate
+
+────────────────────────────────────────────────────────────────
+
+8. RESTRICTIONS
+
+What Client Cannot Do (During Service Period)
+While Developer is providing services:
+- Client cannot resell, redistribute, or license the software to others
+- Client cannot share the application with other businesses
+- Client cannot access or modify the source code (not provided until termination)
+
+What Client Can Do (After Full Ownership Transfer)
+Once Client receives full ownership:
+- Client can modify the code as needed
+- Client can continue using it indefinitely
+- Client cannot resell or commercially license to other businesses
+
+────────────────────────────────────────────────────────────────
+
+9. TERMINATION
+
+By Mutual Agreement
+Either party may propose termination with 30 days written notice. If both parties agree:
+- Developer delivers all source code and documentation
+- Client pays all outstanding invoices
+- Hosting and support services end
+- Client assumes all hosting and maintenance responsibilities
+
+For Non-Payment
+Developer may terminate services if Client is more than 45 days late on payment:
+- Developer will provide 15 days written notice before termination
+- Upon termination, Developer may suspend access until payment is received
+- Client still receives source code after all payments are settled
+
+────────────────────────────────────────────────────────────────
+
+10. GENERAL TERMS
+
+Entire Agreement
+This document represents the complete agreement between parties. Any changes must be made in writing and signed by both parties.
+
+Governing Law
+This agreement is governed by the laws of the State of Wisconsin.
+
+Severability
+If any part of this agreement is found invalid, the rest remains in effect.
+
+Communication
+All notices and communications should be sent via email or text to the contact information on file.
+
+────────────────────────────────────────────────────────────────
+
+SIGNATURES
+
+Developer
+
+Signature: ______________________________
+
+Printed Name: Jaime Perez
+
+Date: _______________
+
+
+Client
+
+Signature: ______________________________
+
+Printed Name: ______________________________
+
+Title: ______________________________
+
+Company: Pleasant Knoll Landscaping LLC
+
+Date: _______________
+
+────────────────────────────────────────────────────────────────
+
+PAYMENT CONFIRMATION
+
+Initial Payment Received:
+- Date: _______________
+- Amount: $350
+- Method: _______________
+
+Balance Payment Received:
+- Date: _______________
+- Amount: $500
+- Method: _______________
+
+Total Paid: $850 ✓
+
+────────────────────────────────────────────────────────────────
+
+Both parties should keep a signed copy of this agreement for their records.

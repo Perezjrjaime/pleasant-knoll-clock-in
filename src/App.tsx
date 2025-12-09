@@ -2159,6 +2159,12 @@ function App() {
         if (!lastDate || sessionDate > lastDate) lastDate = sessionDate
       })
 
+      // Calculate lunch minutes from total
+      const lunchMinutes = (sessions || [])
+        .filter((s: any) => s.project === 'Lunch')
+        .reduce((total: number, s: any) => total + (s.duration || 0), 0)
+      const workMinutes = totalMinutes - lunchMinutes
+
       // Calculate materials totals
       const materialTotals: Record<string, { quantity: number, unit: string }> = {}
       materialsData.forEach((sm: any) => {
@@ -2173,6 +2179,8 @@ function App() {
         project,
         sessions: sessions || [],
         totalMinutes,
+        lunchMinutes,
+        workMinutes,
         hoursByRole,
         employeeHours,
         materialTotals,
@@ -2785,12 +2793,16 @@ function App() {
           )
           
           const totalMinutes = daySessions.reduce((total, session) => total + (session.duration || 0), 0)
+          const lunchMinutes = daySessions.filter(s => s.project === 'Lunch').reduce((total, session) => total + (session.duration || 0), 0)
+          const workMinutes = totalMinutes - lunchMinutes
           
           return {
             name: dayName,
             date: dayDate,
             sessions: daySessions,
             totalMinutes,
+            lunchMinutes,
+            workMinutes,
             isToday: dayDate.toDateString() === new Date().toDateString()
           }
         })
@@ -2813,8 +2825,12 @@ function App() {
               <div className="weekly-breakdown">
                 <div className="weekly-list">
                   {weekDays.map((day) => {
-                    const hours = Math.floor(day.totalMinutes / 60)
-                    const minutes = day.totalMinutes % 60
+                    const totalHours = Math.floor(day.totalMinutes / 60)
+                    const totalMins = day.totalMinutes % 60
+                    const lunchHours = Math.floor(day.lunchMinutes / 60)
+                    const lunchMins = day.lunchMinutes % 60
+                    const workHours = Math.floor(day.workMinutes / 60)
+                    const workMins = day.workMinutes % 60
                     
                     // Use day.sessions which already has the sessions for this day
                     // Filter to only show sessions with duration (completed sessions)
@@ -2828,7 +2844,16 @@ function App() {
                             {day.isToday && <span className="today-badge">Today</span>}
                           </div>
                           <div className="weekly-day-time">
-                            {day.sessions.length > 0 ? `${hours}h ${minutes}m` : '—'}
+                            {day.sessions.length > 0 ? (
+                              <>
+                                <span className="work-time">{workHours}h {workMins}m</span>
+                                {day.lunchMinutes > 0 && (
+                                  <span className="lunch-time" style={{fontSize: '0.85em', color: '#666', marginLeft: '4px'}}>
+                                    (+{lunchHours > 0 ? `${lunchHours}h ` : ''}{lunchMins}m lunch)
+                                  </span>
+                                )}
+                              </>
+                            ) : '—'}
                           </div>
                         </div>
                         
@@ -3422,8 +3447,17 @@ function App() {
                 {displayTimesheets.length > 0 ? (
                   <div className="timesheets-list">
                     {displayTimesheets.map((timesheet: any, index: number) => {
-                      const hours = Math.floor(timesheet.totalMinutes / 60)
-                      const minutes = timesheet.totalMinutes % 60
+                      const totalMinutes = timesheet.totalMinutes
+                      const lunchMinutes = timesheet.sessions.filter((s: any) => s.project === 'Lunch').reduce((sum: number, s: any) => sum + (s.duration || 0), 0)
+                      const workMinutes = totalMinutes - lunchMinutes
+                      
+                      const totalHours = Math.floor(totalMinutes / 60)
+                      const totalMins = totalMinutes % 60
+                      const workHours = Math.floor(workMinutes / 60)
+                      const workMins = workMinutes % 60
+                      const lunchHours = Math.floor(lunchMinutes / 60)
+                      const lunchMins = lunchMinutes % 60
+                      
                       const isSelected = selectedTimesheet === timesheet
                       
                       // Get the user's role for display (only for super admin)
@@ -3440,7 +3474,14 @@ function App() {
                               <div className="timesheet-initials">Initials: {timesheet.employeeInitials || 'N/A'}</div>
                             </div>
                             <div className="timesheet-details">
-                              <div className="timesheet-hours">{hours}h {minutes}m</div>
+                              <div className="timesheet-hours">
+                                {workHours}h {workMins}m
+                                {lunchMinutes > 0 && (
+                                  <span style={{fontSize: '0.85em', color: '#666', marginLeft: '4px'}}>
+                                    (+{lunchHours > 0 ? `${lunchHours}h ` : ''}{lunchMins}m lunch)
+                                  </span>
+                                )}
+                              </div>
                               <div className="timesheet-week">
                                 Week ending: {timesheet.weekEndingDate ? new Date(timesheet.weekEndingDate).toLocaleDateString() : 'N/A'}
                               </div>
@@ -3958,12 +3999,16 @@ function App() {
           )
           
           const totalMinutes = daySessions.reduce((total, session) => total + (session.duration || 0), 0)
+          const lunchMinutes = daySessions.filter(s => s.project === 'Lunch').reduce((total, session) => total + (session.duration || 0), 0)
+          const workMinutes = totalMinutes - lunchMinutes
           
           return {
             name: dayName,
             date: dayDate,
             sessions: daySessions,
             totalMinutes,
+            lunchMinutes,
+            workMinutes,
             isToday: dayDate.toDateString() === new Date().toDateString()
           }
         })
@@ -3986,8 +4031,12 @@ function App() {
               <div className="weekly-breakdown">
                 <div className="weekly-list">
                   {myWeekDays.map((day) => {
-                    const hours = Math.floor(day.totalMinutes / 60)
-                    const minutes = day.totalMinutes % 60
+                    const totalHours = Math.floor(day.totalMinutes / 60)
+                    const totalMins = day.totalMinutes % 60
+                    const lunchHours = Math.floor(day.lunchMinutes / 60)
+                    const lunchMins = day.lunchMinutes % 60
+                    const workHours = Math.floor(day.workMinutes / 60)
+                    const workMins = day.workMinutes % 60
                     
                     // Use day.sessions which already has the sessions for this day
                     // Filter to only show sessions with duration (completed sessions)
@@ -4001,7 +4050,16 @@ function App() {
                             {day.isToday && <span className="today-badge">Today</span>}
                           </div>
                           <div className="weekly-day-time">
-                            {day.sessions.length > 0 ? `${hours}h ${minutes}m` : '—'}
+                            {day.sessions.length > 0 ? (
+                              <>
+                                <span className="work-time">{workHours}h {workMins}m</span>
+                                {day.lunchMinutes > 0 && (
+                                  <span className="lunch-time" style={{fontSize: '0.85em', color: '#666', marginLeft: '4px'}}>
+                                    (+{lunchHours > 0 ? `${lunchHours}h ` : ''}{lunchMins}m lunch)
+                                  </span>
+                                )}
+                              </>
+                            ) : '—'}
                           </div>
                         </div>
                         
@@ -4372,8 +4430,8 @@ function App() {
 
             <div className="project-stats-summary">
               <div className="stat-box">
-                <h4>Total Hours</h4>
-                <p className="stat-value">{Math.round(projectStats.totalMinutes / 60 * 10) / 10}h</p>
+                <h4>Work Hours</h4>
+                <p className="stat-value">{Math.round(projectStats.workMinutes / 60 * 10) / 10}h</p>
               </div>
               <div className="stat-box">
                 <h4>Sessions</h4>
