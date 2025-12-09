@@ -2825,8 +2825,6 @@ function App() {
               <div className="weekly-breakdown">
                 <div className="weekly-list">
                   {weekDays.map((day) => {
-                    const totalHours = Math.floor(day.totalMinutes / 60)
-                    const totalMins = day.totalMinutes % 60
                     const lunchHours = Math.floor(day.lunchMinutes / 60)
                     const lunchMins = day.lunchMinutes % 60
                     const workHours = Math.floor(day.workMinutes / 60)
@@ -3451,8 +3449,6 @@ function App() {
                       const lunchMinutes = timesheet.sessions.filter((s: any) => s.project === 'Lunch').reduce((sum: number, s: any) => sum + (s.duration || 0), 0)
                       const workMinutes = totalMinutes - lunchMinutes
                       
-                      const totalHours = Math.floor(totalMinutes / 60)
-                      const totalMins = totalMinutes % 60
                       const workHours = Math.floor(workMinutes / 60)
                       const workMins = workMinutes % 60
                       const lunchHours = Math.floor(lunchMinutes / 60)
@@ -4031,8 +4027,6 @@ function App() {
               <div className="weekly-breakdown">
                 <div className="weekly-list">
                   {myWeekDays.map((day) => {
-                    const totalHours = Math.floor(day.totalMinutes / 60)
-                    const totalMins = day.totalMinutes % 60
                     const lunchHours = Math.floor(day.lunchMinutes / 60)
                     const lunchMins = day.lunchMinutes % 60
                     const workHours = Math.floor(day.workMinutes / 60)
