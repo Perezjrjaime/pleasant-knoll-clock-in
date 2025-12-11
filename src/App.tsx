@@ -2109,9 +2109,11 @@ function App() {
           setSessionMaterials(prev => prev.filter(m => m.id !== id))
           showToast('Material removed from session', 'success')
           
-          // Reload materials if we're in the project modal
+          // Reload materials if we're in the project modal or employee materials
           if (selectedProjectForNotes) {
             loadProjectMaterials(selectedProjectForNotes.name)
+          } else {
+            loadEmployeeMaterials()
           }
         } catch (err) {
           console.error('Error deleting session material:', err)
@@ -2141,9 +2143,11 @@ function App() {
       setEditingSessionMaterial(null)
       showToast('Material updated successfully!', 'success')
       
-      // Reload materials for this project
+      // Reload materials for this project or employee materials
       if (selectedProjectForNotes) {
         loadProjectMaterials(selectedProjectForNotes.name)
+      } else {
+        loadEmployeeMaterials()
       }
     } catch (err) {
       console.error('Error updating material:', err)
@@ -2724,6 +2728,14 @@ function App() {
                             setProjectModalTab('notes')
                             if (project.id) loadProjectNotes(project.id)
                             loadProjectMaterials(project.name)
+                            // Initialize the add material form with this project
+                            setNewSessionMaterial({
+                              materialId: '',
+                              quantity: '',
+                              notes: '',
+                              project: project.name,
+                              date: new Date().toISOString().split('T')[0]
+                            })
                           }}
                         >
                           View Project
@@ -3352,12 +3364,81 @@ function App() {
                       <div key={material.id} className="material-entry-card">
                         <div className="material-entry-header">
                           <h3>{material.materials?.name || 'Unknown Material'}</h3>
-                          <span className="material-quantity">{material.quantity} {material.materials?.unit || ''}</span>
+                          {editingSessionMaterial?.id === material.id ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={editingSessionMaterial.quantity}
+                                onChange={(e) => setEditingSessionMaterial({...editingSessionMaterial, quantity: e.target.value})}
+                                style={{ width: '80px', padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                              />
+                              <span>{material.materials?.unit || ''}</span>
+                            </div>
+                          ) : (
+                            <span className="material-quantity">{material.quantity} {material.materials?.unit || ''}</span>
+                          )}
                         </div>
                         <div className="material-entry-details">
                           {material.project && <p><strong>Project:</strong> {material.project}</p>}
                           <p><strong>Date:</strong> {new Date(material.created_at).toLocaleDateString()}</p>
-                          {material.notes && <p><strong>Notes:</strong> {material.notes}</p>}
+                          {editingSessionMaterial?.id === material.id ? (
+                            <p>
+                              <strong>Notes:</strong>
+                              <input
+                                type="text"
+                                value={editingSessionMaterial.notes || ''}
+                                onChange={(e) => setEditingSessionMaterial({...editingSessionMaterial, notes: e.target.value})}
+                                placeholder="Optional notes..."
+                                style={{ marginLeft: '8px', padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', width: '200px' }}
+                              />
+                            </p>
+                          ) : (
+                            material.notes && <p><strong>Notes:</strong> {material.notes}</p>
+                          )}
+                        </div>
+                        <div className="material-actions" style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+                          {editingSessionMaterial?.id === material.id ? (
+                            <>
+                              <button
+                                className="icon-btn save"
+                                onClick={() => updateSessionMaterial(editingSessionMaterial)}
+                                title="Save changes"
+                                style={{ background: '#22c55e', color: 'white', border: 'none' }}
+                              >
+                                <Check size={16} />
+                              </button>
+                              <button
+                                className="icon-btn cancel"
+                                onClick={() => setEditingSessionMaterial(null)}
+                                title="Cancel"
+                                style={{ background: '#6b7280', color: 'white', border: 'none' }}
+                              >
+                                <X size={16} />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                className="icon-btn edit"
+                                onClick={() => setEditingSessionMaterial({
+                                  id: material.id,
+                                  quantity: material.quantity.toString(),
+                                  notes: material.notes || ''
+                                })}
+                                title="Edit material"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button
+                                className="icon-btn delete"
+                                onClick={() => deleteSessionMaterial(material.id)}
+                                title="Delete material"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -5117,21 +5198,31 @@ function App() {
 
             {/* Existing materials for this session */}
             {sessionMaterials.length > 0 && (
-              <div className="session-materials-list">
-                <h4>Added Materials</h4>
+              <div className="session-materials-list" style={{ marginBottom: '24px' }}>
+                <h4 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: '#000' }}>Added Materials</h4>
                 {sessionMaterials.map((sm: any) => (
-                  <div key={sm.id} className="session-material-item">
-                    <div className="material-details">
-                      <strong>{sm.materials.name}</strong>
-                      <span>{sm.quantity} {sm.materials.unit}</span>
-                      {sm.notes && <div className="material-notes">{sm.notes}</div>}
+                  <div key={sm.id} className="session-material-item" style={{ 
+                    padding: '16px', 
+                    background: 'white', 
+                    border: '2px solid #22c55e', 
+                    borderRadius: '12px', 
+                    marginBottom: '12px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div className="material-details" style={{ flex: 1 }}>
+                      <strong style={{ fontSize: '16px', display: 'block', marginBottom: '6px', color: '#000' }}>{sm.materials.name}</strong>
+                      <span style={{ fontSize: '15px', color: '#22c55e', fontWeight: '600' }}>{sm.quantity} {sm.materials.unit}</span>
+                      {sm.notes && <div className="material-notes" style={{ fontSize: '14px', color: '#666', marginTop: '8px', fontStyle: 'italic' }}>{sm.notes}</div>}
                     </div>
                     <button
                       className="icon-btn delete"
                       onClick={() => deleteSessionMaterial(sm.id)}
                       title="Remove"
+                      style={{ flexShrink: 0 }}
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={18} />
                     </button>
                   </div>
                 ))}
@@ -5298,16 +5389,135 @@ function App() {
 
             {/* Materials Tab Content */}
             {projectModalTab === 'materials' && (
-              <>
-                {/* Add Material Form */}
-                <div className="add-note-form" style={{ padding: '12px', marginBottom: '12px' }}>
-                  <div className="form-group" style={{ marginBottom: '8px' }}>
-                    <label style={{ fontSize: '13px', marginBottom: '3px', display: 'block', fontWeight: '600' }}>Material:</label>
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '20px' }}>
+                {/* Materials List - Takes up most of the space */}
+                <div style={{ flex: 1, overflow: 'auto', minHeight: '300px' }}>
+                  {sessionMaterials.length === 0 ? (
+                    <div className="empty-state" style={{ padding: '40px', textAlign: 'center' }}>
+                      <p style={{ fontSize: '16px', color: '#666' }}>No materials added yet.</p>
+                      <p style={{ fontSize: '14px', color: '#999' }}>Add materials below to track what's used on this project</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {sessionMaterials.map((material) => (
+                        <div 
+                          key={material.id} 
+                          style={{ 
+                            padding: '20px', 
+                            background: 'white', 
+                            border: '2px solid #22c55e', 
+                            borderRadius: '12px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            gap: '16px'
+                          }}
+                        >
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '18px', fontWeight: '600', color: '#000', marginBottom: '8px' }}>
+                              {material.materials.name}
+                            </div>
+                            {editingSessionMaterial?.id === material.id ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={editingSessionMaterial.quantity}
+                                    onChange={(e) => setEditingSessionMaterial({...editingSessionMaterial, quantity: e.target.value})}
+                                    style={{ width: '120px', padding: '8px 12px', fontSize: '16px', borderRadius: '6px', border: '2px solid #ddd' }}
+                                  />
+                                  <span style={{ fontSize: '16px', fontWeight: '600', color: '#666' }}>{material.materials.unit}</span>
+                                </div>
+                                <input
+                                  type="text"
+                                  value={editingSessionMaterial.notes || ''}
+                                  onChange={(e) => setEditingSessionMaterial({...editingSessionMaterial, notes: e.target.value})}
+                                  placeholder="Optional notes..."
+                                  style={{ padding: '8px 12px', fontSize: '15px', borderRadius: '6px', border: '2px solid #ddd', width: '100%' }}
+                                />
+                              </div>
+                            ) : (
+                              <>
+                                <div style={{ fontSize: '17px', color: '#22c55e', fontWeight: '600', marginBottom: '6px' }}>
+                                  {material.quantity} {material.materials.unit}
+                                </div>
+                                <div style={{ fontSize: '14px', color: '#666' }}>
+                                  {new Date(material.created_at).toLocaleDateString()}
+                                </div>
+                                {material.notes && (
+                                  <div style={{ fontSize: '15px', color: '#666', marginTop: '8px', fontStyle: 'italic' }}>
+                                    {material.notes}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                            {editingSessionMaterial?.id === material.id ? (
+                              <>
+                                <button
+                                  className="icon-btn save"
+                                  onClick={() => updateSessionMaterial(editingSessionMaterial)}
+                                  title="Save changes"
+                                  style={{ width: '40px', height: '40px', background: '#22c55e', color: 'white', border: 'none' }}
+                                >
+                                  <Check size={20} />
+                                </button>
+                                <button
+                                  className="icon-btn cancel"
+                                  onClick={() => setEditingSessionMaterial(null)}
+                                  title="Cancel"
+                                  style={{ width: '40px', height: '40px', background: '#6b7280', color: 'white', border: 'none' }}
+                                >
+                                  <X size={20} />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  className="icon-btn edit"
+                                  onClick={() => setEditingSessionMaterial({
+                                    id: material.id,
+                                    quantity: material.quantity.toString(),
+                                    notes: material.notes || ''
+                                  })}
+                                  title="Edit material"
+                                  style={{ width: '40px', height: '40px' }}
+                                >
+                                  <Edit2 size={20} />
+                                </button>
+                                <button
+                                  className="icon-btn delete"
+                                  onClick={() => deleteSessionMaterial(material.id)}
+                                  title="Delete material"
+                                  style={{ width: '40px', height: '40px' }}
+                                >
+                                  <Trash2 size={20} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Add Material Form - Compact at bottom */}
+                <div style={{ 
+                  padding: '16px', 
+                  background: '#f9fafb', 
+                  border: '2px solid #e5e7eb', 
+                  borderRadius: '12px',
+                  flexShrink: 0
+                }}>
+                  <h4 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Add Material</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: '12px', marginBottom: '12px' }}>
                     <select
                       value={newSessionMaterial.materialId}
                       onChange={(e) => setNewSessionMaterial({...newSessionMaterial, materialId: e.target.value})}
-                      className="input-field"
-                      style={{ padding: '6px 8px', fontSize: '14px' }}
+                      style={{ padding: '8px 12px', fontSize: '14px', borderRadius: '6px', border: '1px solid #ddd' }}
                     >
                       <option value="">Select material...</option>
                       {materials
@@ -5318,155 +5528,42 @@ function App() {
                           </option>
                         ))}
                     </select>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: '8px' }}>
-                    <label style={{ fontSize: '13px', marginBottom: '3px', display: 'block', fontWeight: '600' }}>Quantity:</label>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
                       value={newSessionMaterial.quantity}
                       onChange={(e) => setNewSessionMaterial({...newSessionMaterial, quantity: e.target.value})}
-                      placeholder="e.g., 1500"
-                      className="input-field"
-                      style={{ padding: '6px 8px', fontSize: '14px' }}
+                      placeholder="Quantity"
+                      style={{ padding: '8px 12px', fontSize: '14px', borderRadius: '6px', border: '1px solid #ddd' }}
                     />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: '8px' }}>
-                    <label style={{ fontSize: '13px', marginBottom: '3px', display: 'block', fontWeight: '600' }}>Notes (optional):</label>
                     <input
                       type="text"
                       value={newSessionMaterial.notes}
                       onChange={(e) => setNewSessionMaterial({...newSessionMaterial, notes: e.target.value})}
-                      placeholder="Additional details..."
-                      className="input-field"
-                      style={{ padding: '6px 8px', fontSize: '14px' }}
+                      placeholder="Notes (optional)"
+                      style={{ padding: '8px 12px', fontSize: '14px', borderRadius: '6px', border: '1px solid #ddd' }}
                     />
                   </div>
                   <button
                     className="btn-primary"
                     onClick={async () => {
-                      // Set the project and date before adding
                       const tempMaterial = {
                         ...newSessionMaterial,
                         project: selectedProjectForNotes.name,
                         date: new Date().toISOString().split('T')[0]
                       }
                       setNewSessionMaterial(tempMaterial)
-                      
-                      // Add material
                       await addSessionMaterial()
-                      
-                      // Reload materials for this project
                       loadProjectMaterials(selectedProjectForNotes.name)
                     }}
                     disabled={!newSessionMaterial.materialId || !newSessionMaterial.quantity}
+                    style={{ width: '100%', padding: '10px' }}
                   >
                     Add Material
                   </button>
                 </div>
-
-                {/* Materials List */}
-                <div className="notes-list">
-                  {sessionMaterials.length === 0 ? (
-                    <div className="empty-state">
-                      <p>No materials added yet.</p>
-                    </div>
-                  ) : (
-                    <table className="materials-table">
-                      <thead>
-                        <tr>
-                          <th>Material</th>
-                          <th>Quantity</th>
-                          <th>Unit</th>
-                          <th>Date</th>
-                          <th>Notes</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sessionMaterials.map(material => (
-                          <tr key={material.id}>
-                            <td>{material.materials.name}</td>
-                            <td>
-                              {editingSessionMaterial?.id === material.id ? (
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={editingSessionMaterial.quantity}
-                                  onChange={(e) => setEditingSessionMaterial({...editingSessionMaterial, quantity: e.target.value})}
-                                  className="inline-edit-input"
-                                  style={{ width: '80px' }}
-                                />
-                              ) : (
-                                material.quantity
-                              )}
-                            </td>
-                            <td>{material.materials.unit}</td>
-                            <td>{new Date(material.created_at).toLocaleDateString()}</td>
-                            <td>
-                              {editingSessionMaterial?.id === material.id ? (
-                                <input
-                                  type="text"
-                                  value={editingSessionMaterial.notes || ''}
-                                  onChange={(e) => setEditingSessionMaterial({...editingSessionMaterial, notes: e.target.value})}
-                                  className="inline-edit-input"
-                                  placeholder="Optional notes..."
-                                />
-                              ) : (
-                                material.notes || '-'
-                              )}
-                            </td>
-                            <td>
-                              <div className="material-actions">
-                                {editingSessionMaterial?.id === material.id ? (
-                                  <>
-                                    <button
-                                      className="icon-btn save"
-                                      onClick={() => updateSessionMaterial(editingSessionMaterial)}
-                                      title="Save changes"
-                                    >
-                                      <Check size={16} />
-                                    </button>
-                                    <button
-                                      className="icon-btn cancel"
-                                      onClick={() => setEditingSessionMaterial(null)}
-                                      title="Cancel"
-                                    >
-                                      <X size={16} />
-                                    </button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <button
-                                      className="icon-btn edit"
-                                      onClick={() => setEditingSessionMaterial({
-                                        id: material.id,
-                                        quantity: material.quantity.toString(),
-                                        notes: material.notes || ''
-                                      })}
-                                      title="Edit material"
-                                    >
-                                      <Edit2 size={16} />
-                                    </button>
-                                    <button
-                                      className="icon-btn delete"
-                                      onClick={() => deleteSessionMaterial(material.id)}
-                                      title="Delete material"
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </>
+              </div>
             )}
           </div>
         </div>
