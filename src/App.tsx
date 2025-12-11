@@ -2377,17 +2377,32 @@ function App() {
           notes: sessionNotes
         }
         
-        // Save to local state
-        setTodaysSessions(prev => [...prev, sessionData])
+        console.log(`🔄 Transfer #${todaysSessions.length + 1}: Ending session at ${currentLocation} (${currentRole}), duration: ${duration} min`)
         
-        // Save to database
-        await saveWorkSession(sessionData)
+        // Save to local state
+        setTodaysSessions(prev => {
+          const updated = [...prev, sessionData]
+          console.log(`📝 Today's sessions count: ${updated.length}`)
+          return updated
+        })
+        
+        // Save to database with error handling
+        try {
+          await saveWorkSession(sessionData)
+          console.log('✅ Transfer session saved to database')
+          // Reload weekly sessions to ensure data is fresh
+          await loadWeeklySessions()
+        } catch (error) {
+          console.error('❌ Failed to save transfer session:', error)
+          showToast('Warning: Session may not have saved. Please check your timesheet.', 'warning')
+        }
       }
       // Start new session
       if (!selectedRole) {
         showToast('Please select your role before transferring', 'warning')
         return
       }
+      console.log(`🔄 Starting new session at ${newLocation} (${selectedRole})`)
       setCurrentLocation(newLocation)
       setCurrentRole(selectedRole)
       setWorkStartTime(now)
