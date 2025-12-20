@@ -100,6 +100,7 @@ function App() {
   // Admin timesheet management state
   const [allTimesheets, setAllTimesheets] = useState<any[]>([]) // For accurate counts
   const [timesheetFilter, setTimesheetFilter] = useState<'submitted' | 'approved' | 'rejected' | 'all'>('submitted')
+  const [employeeFilter, setEmployeeFilter] = useState<string>('all') // Filter by employee
   const [selectedTimesheet, setSelectedTimesheet] = useState<any | null>(null)
   const [adminNotes, setAdminNotes] = useState('')
   const [isProcessingTimesheet, setIsProcessingTimesheet] = useState(false)
@@ -181,6 +182,11 @@ function App() {
     confirmText: 'Confirm',
     cancelText: 'Cancel'
   })
+
+  // Print modal state
+  const [showPrintProjectReport, setShowPrintProjectReport] = useState(false)
+  const [showPrintAdminTimesheet, setShowPrintAdminTimesheet] = useState(false)
+  const [timesheetToPrint, setTimesheetToPrint] = useState<any>(null)
 
   // Authentication state
   const [session, setSession] = useState<Session | null>(null)
@@ -1406,12 +1412,18 @@ function App() {
 
       // Process all timesheets for display and counts
       if (allData && allData.length > 0) {
+        // Filter by employee if specified
+        let filteredData = allData
+        if (employeeFilter !== 'all') {
+          filteredData = allData.filter((s: any) => s.user_id === employeeFilter)
+        }
+        
         // Get user names for all timesheets
-        const allUserIds = [...new Set(allData.map((s: any) => s.user_id))]
+        const originalUserIds = [...new Set(allData.map((s: any) => s.user_id))]
         const { data: allUserRoles } = await supabase
           .from('user_roles')
           .select('user_id, full_name, email')
-          .in('user_id', allUserIds)
+          .in('user_id', originalUserIds)
         
         const allUserNameMap = new Map()
         if (allUserRoles) {
@@ -1421,7 +1433,7 @@ function App() {
         }
 
         // Load materials for all sessions
-        const allSessionIds = allData.map((s: any) => s.id)
+        const allSessionIds = filteredData.map((s: any) => s.id)
         const { data: allSessionMaterialsData } = await supabase
           .from('session_materials')
           .select(`
@@ -1440,7 +1452,7 @@ function App() {
           })
         }
 
-        const allGrouped = (allData || []).reduce((acc: any, session: any) => {
+        const allGrouped = (filteredData || []).reduce((acc: any, session: any) => {
           const key = `${session.user_id}-${session.week_ending_date || 'no-week'}`
           if (!acc[key]) {
             acc[key] = {
@@ -1825,7 +1837,7 @@ function App() {
       loadPendingTimesheets()
       setCurrentPage(1) // Reset to first page when filters change
     }
-  }, [userRole, activeTab, timesheetFilter, timesheetDateFilter, customStartDate, customEndDate])
+  }, [userRole, activeTab, timesheetFilter, timesheetDateFilter, customStartDate, customEndDate, employeeFilter])
 
   // Materials Management Functions
   
@@ -2342,6 +2354,39 @@ function App() {
       console.error('Error reactivating project:', error)
       showToast('Error reactivating project', 'error')
     }
+  }
+
+  // Print Functions
+  
+  const handlePrintProjectReport = () => {
+    setShowPrintProjectReport(true)
+    // Small delay to let the modal render, then trigger print
+    setTimeout(() => {
+      window.print()
+      setShowPrintProjectReport(false)
+    }, 100)
+  }
+
+  const formatDateForPrint = (date: Date) => {
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric', 
+      year: 'numeric' 
+    })
+  }
+
+  const handlePrintAdminTimesheet = (timesheet: any) => {
+    setTimesheetToPrint(timesheet)
+    setShowPrintAdminTimesheet(true)
+    // Delay to let the content render before opening print dialog
+    setTimeout(() => {
+      window.print()
+      // Wait a bit before hiding to ensure print dialog has opened
+      setTimeout(() => {
+        setShowPrintAdminTimesheet(false)
+        setTimesheetToPrint(null)
+      }, 500)
+    }, 300)
   }
 
   const handleClockAction = async () => {
@@ -3621,6 +3666,34 @@ function App() {
                     </button>
                   </div>
 
+                  {/* Employee Filter */}
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <label style={{ fontSize: '14px', fontWeight: '500', color: '#666', whiteSpace: 'nowrap' }}>Employee:</label>
+                    <select
+                      value={employeeFilter}
+                      onChange={(e) => { 
+                        setEmployeeFilter(e.target.value); 
+                        setCurrentPage(1); 
+                      }}
+                      style={{ 
+                        padding: '8px 12px', 
+                        borderRadius: '6px', 
+                        border: '1px solid #ddd',
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        backgroundColor: 'white',
+                        minWidth: '180px'
+                      }}
+                    >
+                      <option value="all">All Employees</option>
+                      {allUsers.map(user => (
+                        <option key={user.user_id} value={user.user_id}>
+                          {user.full_name || user.email}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   {/* Date Range Section */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -3747,6 +3820,21 @@ function App() {
                             <div className={`timesheet-status-badge ${timesheet.status}`}>
                               {timesheet.status.charAt(0).toUpperCase() + timesheet.status.slice(1)}
                             </div>
+                            {/* Print button for approved timesheets */}
+                            {timesheet.status === 'approved' && (
+                              <button
+                                className="print-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handlePrintAdminTimesheet(timesheet)
+                                }}
+                                title="Print Approved Timesheet"
+                                style={{ marginLeft: '10px' }}
+                              >
+                                <FileText size={16} />
+                                Print
+                              </button>
+                            )}
                           </div>
 
                           {/* Expanded Details */}
@@ -4319,13 +4407,15 @@ function App() {
             <div className="hours-container">
               <div className="hours-header">
                 <h2>My Time Tracking</h2>
-                <button
-                  className="add-session-icon-btn"
-                  onClick={() => setShowAddSessionModal(true)}
-                  title="Add Session Manually"
-                >
-                  <Plus size={24} />
-                </button>
+                <div className="header-actions">
+                  <button
+                    className="add-session-icon-btn"
+                    onClick={() => setShowAddSessionModal(true)}
+                    title="Add Session Manually"
+                  >
+                    <Plus size={24} />
+                  </button>
+                </div>
               </div>
 
               {/* Monday through Sunday Breakdown */}
@@ -4719,12 +4809,22 @@ function App() {
                 <p className="stats-project-type">{projectStats.project.type}</p>
                 <p className="stats-project-location">{projectStats.project.location}</p>
               </div>
-              <button 
-                className="modal-close-btn" 
-                onClick={() => setSelectedProjectForStats(null)}
-              >
-                ×
-              </button>
+              <div className="header-actions">
+                <button 
+                  className="print-btn no-print" 
+                  onClick={handlePrintProjectReport}
+                  title="Print Project Report"
+                  style={{ marginRight: '10px' }}
+                >
+                  <FileText size={20} /> Print Report
+                </button>
+                <button 
+                  className="modal-close-btn" 
+                  onClick={() => setSelectedProjectForStats(null)}
+                >
+                  ×
+                </button>
+              </div>
             </div>
 
             <div className="project-stats-summary">
@@ -5603,6 +5703,271 @@ function App() {
           {toast.type === 'error' && <XCircle size={20} />}
           {toast.type === 'warning' && <AlertCircle size={20} />}
           <span>{toast.message}</span>
+        </div>
+      )}
+
+      {/* Printable Project Report */}
+      {showPrintProjectReport && projectStats && (
+        <div className="print-content">
+          <div className="print-header">
+            <div className="print-title">Project Completion Report</div>
+            <div className="print-subtitle">
+              Project: {projectStats.project.name}<br />
+              Type: {projectStats.project.type}<br />
+              Location: {projectStats.project.location}<br />
+              Date Range: {projectStats.firstDate ? formatDateForPrint(projectStats.firstDate) : 'N/A'} - {projectStats.lastDate ? formatDateForPrint(projectStats.lastDate) : 'N/A'}<br />
+              Report Date: {formatDateForPrint(new Date())}
+            </div>
+          </div>
+
+          <div className="print-section">
+            <h3>Project Summary</h3>
+            <table className="print-table" style={{ width: '60%' }}>
+              <tbody>
+                <tr>
+                  <td><strong>Total Work Hours</strong></td>
+                  <td>{Math.round(projectStats.workMinutes / 60 * 10) / 10} hours</td>
+                </tr>
+                <tr>
+                  <td><strong>Total Sessions</strong></td>
+                  <td>{projectStats.sessionCount}</td>
+                </tr>
+                <tr>
+                  <td><strong>Workers Involved</strong></td>
+                  <td>{Object.keys(projectStats.employeeHours).length}</td>
+                </tr>
+                <tr>
+                  <td><strong>Project Duration</strong></td>
+                  <td>
+                    {projectStats.firstDate && projectStats.lastDate
+                      ? `${Math.ceil((projectStats.lastDate.getTime() - projectStats.firstDate.getTime()) / (1000 * 60 * 60 * 24))} days`
+                      : 'N/A'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {Object.keys(projectStats.hoursByRole).length > 0 && (
+            <div className="print-section">
+              <h3>Hours by Equipment/Role</h3>
+              <table className="print-table">
+                <thead>
+                  <tr>
+                    <th>Role/Equipment</th>
+                    <th>Hours</th>
+                    <th>% of Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(projectStats.hoursByRole)
+                    .sort((a, b) => (b[1] as number) - (a[1] as number))
+                    .map(([role, minutes]) => {
+                      const mins = minutes as number
+                      const hours = Math.round(mins / 60 * 10) / 10
+                      const percentage = Math.round((mins / projectStats.totalMinutes) * 100)
+                      return (
+                        <tr key={role}>
+                          <td>{role}</td>
+                          <td>{hours}h</td>
+                          <td>{percentage}%</td>
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {Object.keys(projectStats.employeeHours).length > 0 && (
+            <div className="print-section">
+              <h3>Hours by Employee</h3>
+              <table className="print-table">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Hours Worked</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(projectStats.employeeHours)
+                    .sort((a, b) => (b[1] as number) - (a[1] as number))
+                    .map(([employee, minutes]) => {
+                      const mins = minutes as number
+                      const hours = Math.round(mins / 60 * 10) / 10
+                      return (
+                        <tr key={employee}>
+                          <td>{employee}</td>
+                          <td>{hours}h</td>
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {Object.keys(projectStats.materialTotals).length > 0 && (
+            <div className="print-section">
+              <h3>Materials Used</h3>
+              <table className="print-table">
+                <thead>
+                  <tr>
+                    <th>Material</th>
+                    <th>Quantity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(projectStats.materialTotals)
+                    .sort((a, b) => (b[1] as any).quantity - (a[1] as any).quantity)
+                    .map(([material, data]) => {
+                      const materialData = data as { quantity: number; unit: string }
+                      return (
+                        <tr key={material}>
+                          <td>{material}</td>
+                          <td>{materialData.quantity} {materialData.unit}</td>
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="print-signature">
+            <p style={{ marginTop: '40px' }}>
+              Project Manager: <span className="print-signature-line"></span> Date: <span className="print-signature-line" style={{ width: '150px' }}></span>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Approved Timesheet Print Layout */}
+      {showPrintAdminTimesheet && timesheetToPrint && (
+        <div className="print-content admin-timesheet-print">
+          <div className="print-header">
+            <h1>Approved Timesheet</h1>
+            <p>Employee: {timesheetToPrint.userName}</p>
+            <p>Week Ending: {timesheetToPrint.weekEndingDate ? formatDateForPrint(new Date(timesheetToPrint.weekEndingDate)) : 'N/A'}</p>
+            <p>Employee Initials: {timesheetToPrint.employeeInitials || 'N/A'}</p>
+            <p>Submitted: {timesheetToPrint.submittedAt ? formatDateForPrint(new Date(timesheetToPrint.submittedAt)) : 'N/A'}</p>
+            {timesheetToPrint.sessions[0]?.approved_at && (
+              <p>Approved: {formatDateForPrint(new Date(timesheetToPrint.sessions[0].approved_at))}</p>
+            )}
+          </div>
+
+          <div className="print-section">
+            <h3>Daily Hours Summary</h3>
+            <table className="print-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Total Hours</th>
+                  <th>Lunch</th>
+                  <th>Work Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  // Group sessions by date
+                  const sessionsByDate = timesheetToPrint.sessions.reduce((acc: any, session: any) => {
+                    const date = new Date(session.start_time).toDateString()
+                    if (!acc[date]) {
+                      acc[date] = []
+                    }
+                    acc[date].push(session)
+                    return acc
+                  }, {})
+
+                  // Sort dates chronologically
+                  const sortedDates = Object.keys(sessionsByDate).sort((a, b) => 
+                    new Date(a).getTime() - new Date(b).getTime()
+                  )
+
+                  return sortedDates.map(date => {
+                    const daySessions = sessionsByDate[date]
+                    const totalMinutes = daySessions.reduce((sum: number, s: any) => sum + (s.duration || 0), 0)
+                    const lunchMinutes = daySessions
+                      .filter((s: any) => s.project === 'Lunch')
+                      .reduce((sum: number, s: any) => sum + (s.duration || 0), 0)
+                    const workMinutes = totalMinutes - lunchMinutes
+
+                    const totalHours = Math.floor(totalMinutes / 60)
+                    const totalMins = totalMinutes % 60
+                    const lunchHours = Math.floor(lunchMinutes / 60)
+                    const lunchMins = lunchMinutes % 60
+                    const workHours = Math.floor(workMinutes / 60)
+                    const workMins = workMinutes % 60
+
+                    return (
+                      <tr key={date}>
+                        <td>{formatDateForPrint(new Date(date))}</td>
+                        <td>{totalHours}h {totalMins}m</td>
+                        <td>{lunchHours}h {lunchMins}m</td>
+                        <td>{workHours}h {workMins}m</td>
+                      </tr>
+                    )
+                  })
+                })()}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="print-section">
+            <h3>Week Summary</h3>
+            <table className="print-table">
+              <tbody>
+                <tr>
+                  <td><strong>Total Work Hours:</strong></td>
+                  <td>
+                    {(() => {
+                      const lunchMinutes = timesheetToPrint.sessions
+                        .filter((s: any) => s.project === 'Lunch')
+                        .reduce((sum: number, s: any) => sum + (s.duration || 0), 0)
+                      const workMinutes = timesheetToPrint.totalMinutes - lunchMinutes
+                      const hours = Math.floor(workMinutes / 60)
+                      const mins = workMinutes % 60
+                      return `${hours}h ${mins}m`
+                    })()}
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Total Lunch Time:</strong></td>
+                  <td>
+                    {(() => {
+                      const lunchMinutes = timesheetToPrint.sessions
+                        .filter((s: any) => s.project === 'Lunch')
+                        .reduce((sum: number, s: any) => sum + (s.duration || 0), 0)
+                      const hours = Math.floor(lunchMinutes / 60)
+                      const mins = lunchMinutes % 60
+                      return `${hours}h ${mins}m`
+                    })()}
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Days Worked:</strong></td>
+                  <td>
+                    {(() => {
+                      // Count unique dates
+                      const uniqueDates = new Set(
+                        timesheetToPrint.sessions
+                          .filter((s: any) => s.project !== 'Lunch')
+                          .map((s: any) => new Date(s.start_time).toDateString())
+                      )
+                      return uniqueDates.size
+                    })()}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {timesheetToPrint.sessions[0]?.admin_notes && (
+            <div className="print-section">
+              <h3>Admin Notes</h3>
+              <p>{timesheetToPrint.sessions[0].admin_notes}</p>
+            </div>
+          )}
         </div>
       )}
     </div>
