@@ -5833,12 +5833,6 @@ function App() {
               </table>
             </div>
           )}
-
-          <div className="print-signature">
-            <p style={{ marginTop: '40px' }}>
-              Project Manager: <span className="print-signature-line"></span> Date: <span className="print-signature-line" style={{ width: '150px' }}></span>
-            </p>
-          </div>
         </div>
       )}
 
