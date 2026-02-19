@@ -1248,6 +1248,77 @@ body {
   box-shadow: 0 6px 15px rgba(34, 197, 94, 0.4);
 }
 
+/* Week Navigation */
+.week-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border: 2px solid #000000;
+  border-radius: 12px;
+}
+
+.week-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: white;
+  color: #000000;
+  border: 2px solid #000000;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 100px;
+  justify-content: center;
+}
+
+.week-nav-btn:hover:not(:disabled) {
+  background: #000000;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.week-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: #e9ecef;
+}
+
+.week-label {
+  flex: 1;
+  text-align: center;
+}
+
+.week-label-text {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #000000;
+  margin-bottom: 0.25rem;
+}
+
+.week-date-range {
+  font-size: 0.85rem;
+  color: #666;
+  font-weight: 500;
+}
+
+@media (max-width: 768px) {
+  .week-navigation {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .week-nav-btn {
+    width: 100%;
+  }
+}
+
 .hours-container h3 {
   color: #000000;
   margin-bottom: 1rem;

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield, UserCheck, UserX, Plus, Package, Check, X, Users, FileText } from 'lucide-react'
+import { Clock, Calendar, BarChart3, History, CheckCircle, XCircle, AlertCircle, Edit2, Trash2, LogOut, User, Shield, UserCheck, UserX, Plus, Package, Check, X, Users, FileText, ChevronLeft, ChevronRight } from 'lucide-react'
 import { supabase, type Project, type UserRole, supabaseOperations } from './lib/supabase'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
 import AccessDenied from './components/AccessDenied'
@@ -52,6 +52,9 @@ function App() {
   
   // Track recent modifications to prevent premature reloading
   const [lastModificationTime, setLastModificationTime] = useState<number>(0)
+  
+  // Week navigation state (0 = current week, -1 = last week, -2 = 2 weeks ago)
+  const [weekOffset, setWeekOffset] = useState<number>(0)
   
   // Common landscaping roles
   // Base locations (always available)
@@ -535,23 +538,37 @@ function App() {
   }, [user])
 
   // Load weekly sessions from database
-  const loadWeeklySessions = async () => {
+  const loadWeeklySessions = async (weekOffsetParam?: number) => {
     if (!user) return
     
+    const offset = weekOffsetParam !== undefined ? weekOffsetParam : weekOffset
+    
     try {
-      // Get the start of this week (Monday)
+      // Calculate the start of the target week based on offset
       const now = new Date()
       const startOfWeek = new Date(now)
       const dayOfWeek = now.getDay()
       const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek // If Sunday, go back 6 days, otherwise go to Monday
       startOfWeek.setDate(now.getDate() + diff)
+      startOfWeek.setDate(startOfWeek.getDate() + (offset * 7)) // Apply week offset
       startOfWeek.setHours(0, 0, 0, 0)
+      
+      const endOfWeek = new Date(startOfWeek)
+      endOfWeek.setDate(startOfWeek.getDate() + 7) // End of week (next Monday)
+      endOfWeek.setHours(0, 0, 0, 0)
+      
+      console.log('📅 Loading sessions for week:', {
+        offset,
+        startOfWeek: startOfWeek.toDateString(),
+        endOfWeek: endOfWeek.toDateString()
+      })
       
       const { data, error } = await supabase
         .from('work_sessions')
         .select('*')
         .eq('user_id', user.id)
         .gte('start_time', startOfWeek.toISOString())
+        .lt('start_time', endOfWeek.toISOString())
         .order('start_time', { ascending: false })
       
       if (error) {
@@ -577,7 +594,7 @@ function App() {
         setWeeklySessions(sessions)
         
         // Debug: log sessions
-        console.log('📊 Loaded weekly sessions:', sessions.length)
+        console.log(`✅ Loaded ${sessions.length} sessions for week offset ${offset}`)
         if (sessions.length > 0) {
           console.log('First session:', {
             startTime: sessions[0].startTime,
@@ -620,7 +637,7 @@ function App() {
     }, 10000) // Refresh every 10 seconds when on hours or timesheet tab
     
     return () => clearInterval(interval)
-  }, [user, activeTab, lastModificationTime])
+  }, [user, activeTab, lastModificationTime, weekOffset])
 
   // Project management functions
   const addNewProject = async () => {
@@ -988,20 +1005,30 @@ function App() {
     try {
       setIsSubmitting(true)
       
-      // Get all draft sessions for this week
-      const startOfWeek = new Date()
-      startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+      // Calculate the week to submit based on current weekOffset
+      const now = new Date()
+      const startOfWeek = new Date(now)
+      const dayOfWeek = startOfWeek.getDay()
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+      startOfWeek.setDate(now.getDate() + diff)
+      startOfWeek.setDate(startOfWeek.getDate() + (weekOffset * 7)) // Apply week offset
       startOfWeek.setHours(0, 0, 0, 0)
+      
+      const endOfWeek = new Date(startOfWeek)
+      endOfWeek.setDate(startOfWeek.getDate() + 7)
+      endOfWeek.setHours(0, 0, 0, 0)
       
       // Calculate week ending date (Saturday)
       const weekEndingDate = new Date(startOfWeek)
-      weekEndingDate.setDate(startOfWeek.getDate() + 6) // Saturday
+      weekEndingDate.setDate(startOfWeek.getDate() + 5) // Saturday
       
       // Update ALL sessions for this week (draft AND approved) to submitted status
       // This ensures that if you add/edit after approval, everything goes back for re-review
       console.log('📝 Submitting timesheet with params:', {
         userId: user.id,
+        weekOffset,
         startOfWeek: startOfWeek.toISOString(),
+        endOfWeek: endOfWeek.toISOString(),
         initials
       })
       
@@ -1020,6 +1047,7 @@ function App() {
         .eq('user_id', user.id)
         .in('status', ['draft', 'approved'])
         .gte('start_time', startOfWeek.toISOString())
+        .lt('start_time', endOfWeek.toISOString())
         .select()
       
       console.log('📤 Update result:', { updated: updateResult?.length || 0, error })
@@ -1028,37 +1056,12 @@ function App() {
         console.error('Error submitting timesheet:', error)
         showToast('Failed to submit timesheet. Please try again.', 'error')
       } else {
-        showToast('Timesheet submitted successfully! Waiting for admin approval.', 'success')
+        const weekLabel = weekOffset === 0 ? 'this week' : weekOffset === -1 ? 'last week' : 'that week'
+        showToast(`Timesheet for ${weekLabel} submitted successfully! Waiting for admin approval.`, 'success')
         setEmployeeInitials('')
         
-        // Reload sessions to show updated status
-        const { data: updatedSessions } = await supabase
-          .from('work_sessions')
-          .select('*')
-          .eq('user_id', user.id)
-          .gte('start_time', startOfWeek.toISOString())
-          .order('start_time', { ascending: false })
-        
-        if (updatedSessions) {
-          const sessions = updatedSessions.map((session: any) => ({
-            id: session.id,
-            project: session.project,
-            location: session.location,
-            role: session.role,
-            startTime: new Date(session.start_time),
-            endTime: new Date(session.end_time),
-            duration: session.duration,
-            notes: session.notes,
-            status: session.status,
-            weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
-            employeeInitials: session.employee_initials,
-            submittedAt: session.submitted_at ? new Date(session.submitted_at) : undefined,
-            approvedBy: session.approved_by,
-            approvedAt: session.approved_at ? new Date(session.approved_at) : undefined,
-            adminNotes: session.admin_notes
-          }))
-          setWeeklySessions(sessions)
-        }
+        // Reload the currently selected week's sessions
+        await loadWeeklySessions()
         
         // If user is admin/super admin, also reload the admin timesheets
         if (userRole === 'admin' || userRole === 'super_admin') {
@@ -1774,54 +1777,8 @@ function App() {
       setShowAddSessionModal(false)
       showToast('Session added successfully!', 'success')
       
-      // Reload weekly sessions to show the new one
-      const now = new Date()
-      const startOfWeek = new Date(now)
-      const dayOfWeek = now.getDay()
-      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
-      startOfWeek.setDate(now.getDate() + diff)
-      startOfWeek.setHours(0, 0, 0, 0)
-      
-      console.log('🔍 Reloading sessions after manual add')
-      console.log('Today:', now.toDateString())
-      console.log('Start of week filter:', startOfWeek.toISOString())
-      
-      const { data } = await supabase
-        .from('work_sessions')
-        .select('*')
-        .eq('user_id', user.id)
-        .gte('start_time', startOfWeek.toISOString())
-        .order('start_time', { ascending: false })
-      
-      console.log('📥 Database returned', data?.length || 0, 'sessions')
-      if (data && data.length > 0) {
-        console.log('First session from DB:', {
-          start_time: data[0].start_time,
-          project: data[0].project,
-          status: data[0].status
-        })
-      }
-      
-      if (data) {
-        const sessions = data.map((session: any) => ({
-          id: session.id,
-          project: session.project,
-          location: session.location,
-          role: session.role,
-          startTime: new Date(session.start_time),
-          endTime: new Date(session.end_time),
-          duration: session.duration,
-          notes: session.notes,
-          status: session.status,
-          weekEndingDate: session.week_ending_date ? new Date(session.week_ending_date) : undefined,
-          employeeInitials: session.employee_initials,
-          submittedAt: session.submitted_at ? new Date(session.submitted_at) : undefined,
-          approvedBy: session.approved_by,
-          approvedAt: session.approved_at ? new Date(session.approved_at) : undefined,
-          adminNotes: session.admin_notes
-        }))
-        setWeeklySessions(sessions)
-      }
+      // Reload the currently selected week's sessions
+      await loadWeeklySessions()
       
     } catch (error) {
       console.error('Error adding manual session:', error)
@@ -2930,12 +2887,26 @@ function App() {
         // Calculate week totals (all completed sessions)
         const completedSessions = allSessions.filter(s => s.duration)
         
-        // Create Monday through Sunday breakdown
-        const startOfWeek = new Date()
+        // Create Monday through Sunday breakdown based on current week offset
+        const now = new Date()
+        const startOfWeek = new Date(now)
         const dayOfWeek = startOfWeek.getDay()
         const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek // If Sunday, go back 6 days, otherwise go to Monday
-        startOfWeek.setDate(startOfWeek.getDate() + diff)
+        startOfWeek.setDate(now.getDate() + diff)
+        startOfWeek.setDate(startOfWeek.getDate() + (weekOffset * 7)) // Apply week offset
         startOfWeek.setHours(0, 0, 0, 0)
+        
+        // Calculate end of week for display
+        const endOfWeek = new Date(startOfWeek)
+        endOfWeek.setDate(startOfWeek.getDate() + 6) // Saturday
+        
+        // Helper function to get week label
+        const getWeekLabel = () => {
+          if (weekOffset === 0) return 'This Week'
+          if (weekOffset === -1) return 'Last Week'
+          if (weekOffset === -2) return 'Two Weeks Ago'
+          return `${Math.abs(weekOffset)} Weeks Ago`
+        }
         
         const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         const weekDays = daysOfWeek.map((dayName, index) => {
@@ -2972,6 +2943,34 @@ function App() {
                   title="Add Session Manually"
                 >
                   <Plus size={24} />
+                </button>
+              </div>
+
+              {/* Week Navigation */}
+              <div className="week-navigation">
+                <button
+                  className="week-nav-btn"
+                  onClick={() => setWeekOffset(weekOffset - 1)}
+                  disabled={weekOffset <= -2}
+                  title="Go to previous week"
+                >
+                  <ChevronLeft size={20} />
+                  Previous
+                </button>
+                <div className="week-label">
+                  <div className="week-label-text">{getWeekLabel()}</div>
+                  <div className="week-date-range">
+                    {startOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {endOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </div>
+                </div>
+                <button
+                  className="week-nav-btn"
+                  onClick={() => setWeekOffset(weekOffset + 1)}
+                  disabled={weekOffset >= 0}
+                  title="Go to next week"
+                >
+                  Next
+                  <ChevronRight size={20} />
                 </button>
               </div>
 
@@ -4371,12 +4370,26 @@ function App() {
         // Calculate week totals (all completed sessions)
         const myCompletedSessions = myAllSessions.filter(s => s.duration)
         
-        // Create Monday through Sunday breakdown
-        const myStartOfWeek = new Date()
+        // Create Monday through Sunday breakdown based on current week offset
+        const now2 = new Date()
+        const myStartOfWeek = new Date(now2)
         const myDayOfWeek = myStartOfWeek.getDay()
         const myDiff = myDayOfWeek === 0 ? -6 : 1 - myDayOfWeek // If Sunday, go back 6 days, otherwise go to Monday
-        myStartOfWeek.setDate(myStartOfWeek.getDate() + myDiff)
+        myStartOfWeek.setDate(now2.getDate() + myDiff)
+        myStartOfWeek.setDate(myStartOfWeek.getDate() + (weekOffset * 7)) // Apply week offset
         myStartOfWeek.setHours(0, 0, 0, 0)
+        
+        // Calculate end of week for display
+        const myEndOfWeek = new Date(myStartOfWeek)
+        myEndOfWeek.setDate(myStartOfWeek.getDate() + 6) // Saturday
+        
+        // Helper function to get week label for timesheet
+        const getMyWeekLabel = () => {
+          if (weekOffset === 0) return 'This Week'
+          if (weekOffset === -1) return 'Last Week'
+          if (weekOffset === -2) return 'Two Weeks Ago'
+          return `${Math.abs(weekOffset)} Weeks Ago`
+        }
         
         const myDaysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         const myWeekDays = myDaysOfWeek.map((dayName, index) => {
@@ -4416,6 +4429,34 @@ function App() {
                     <Plus size={24} />
                   </button>
                 </div>
+              </div>
+
+              {/* Week Navigation */}
+              <div className="week-navigation">
+                <button
+                  className="week-nav-btn"
+                  onClick={() => setWeekOffset(weekOffset - 1)}
+                  disabled={weekOffset <= -2}
+                  title="Go to previous week"
+                >
+                  <ChevronLeft size={20} />
+                  Previous
+                </button>
+                <div className="week-label">
+                  <div className="week-label-text">{getMyWeekLabel()}</div>
+                  <div className="week-date-range">
+                    {myStartOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {myEndOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </div>
+                </div>
+                <button
+                  className="week-nav-btn"
+                  onClick={() => setWeekOffset(weekOffset + 1)}
+                  disabled={weekOffset >= 0}
+                  title="Go to next week"
+                >
+                  Next
+                  <ChevronRight size={20} />
+                </button>
               </div>
 
               {/* Monday through Sunday Breakdown */}
