@@ -1307,11 +1307,12 @@ function App() {
           ? ['draft', 'submitted', 'approved', 'rejected'] 
           : [timesheetFilter])
       
-      // Apply date filtering
+      // Apply date filtering by submitted_at (when employee submitted, not when sessions happened)
+      // This ensures "This Week" means "submitted this week" which is what admins expect
       if (timesheetDateFilter !== 'custom' || (customStartDate && customEndDate)) {
         query = query
-          .gte('start_time', startDate.toISOString())
-          .lte('start_time', endDate.toISOString())
+          .gte('submitted_at', startDate.toISOString())
+          .lte('submitted_at', endDate.toISOString())
       }
       
       query = query.order('submitted_at', { ascending: false })
@@ -1326,8 +1327,8 @@ function App() {
       
       if (timesheetDateFilter !== 'custom' || (customStartDate && customEndDate)) {
         allQuery = allQuery
-          .gte('start_time', startDate.toISOString())
-          .lte('start_time', endDate.toISOString())
+          .gte('submitted_at', startDate.toISOString())
+          .lte('submitted_at', endDate.toISOString())
       }
       
       const { data: allData, error: allDataError } = await allQuery
@@ -3141,6 +3142,66 @@ function App() {
                 </div>
               )}
 
+              {/* Weekly Earnings Breakdown */}
+              {(() => {
+                const earningsByRole: Record<string, { minutes: number; rate: number | null }> = {}
+                completedSessions
+                  .filter(s => s.project !== 'Lunch')
+                  .forEach(session => {
+                    const roleData = roles.find(r => r.role_name === session.role)
+                    const rate = roleData?.hourly_rate ?? null
+                    if (!earningsByRole[session.role]) {
+                      earningsByRole[session.role] = { minutes: 0, rate }
+                    }
+                    earningsByRole[session.role].minutes += session.duration || 0
+                  })
+
+                const totalEarnings = Object.values(earningsByRole).reduce((sum, { minutes, rate }) =>
+                  rate !== null ? sum + (minutes / 60) * rate : sum, 0)
+                const totalWorkMinutes = completedSessions
+                  .filter(s => s.project !== 'Lunch')
+                  .reduce((sum, s) => sum + (s.duration || 0), 0)
+
+                if (Object.keys(earningsByRole).length === 0) return null
+
+                return (
+                  <div className="earnings-breakdown">
+                    <h3>💰 Weekly Earnings Breakdown</h3>
+                    <div className="earnings-table">
+                      <div className="earnings-header-row">
+                        <span>Role</span>
+                        <span>Hours</span>
+                        <span>Rate</span>
+                        <span>Earned</span>
+                      </div>
+                      {Object.entries(earningsByRole).map(([roleName, { minutes, rate }]) => {
+                        const earned = rate !== null ? (minutes / 60) * rate : null
+                        return (
+                          <div key={roleName} className="earnings-row">
+                            <span className="earnings-role">{roleName}</span>
+                            <span className="earnings-hours">{Math.floor(minutes / 60)}h {minutes % 60}m</span>
+                            <span className="earnings-rate">
+                              {rate !== null
+                                ? `$${Number(rate).toFixed(2)}/hr`
+                                : <span className="no-rate">No rate</span>}
+                            </span>
+                            <span className="earnings-amount">
+                              {earned !== null ? `$${earned.toFixed(2)}` : '—'}
+                            </span>
+                          </div>
+                        )
+                      })}
+                      <div className="earnings-total-row">
+                        <span>Total</span>
+                        <span>{Math.floor(totalWorkMinutes / 60)}h {totalWorkMinutes % 60}m</span>
+                        <span></span>
+                        <span className="earnings-total">${totalEarnings.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
               {/* Current Status */}
               <div className="current-status-card">
                 <h3>Current Status</h3>
@@ -4253,17 +4314,20 @@ function App() {
                       <small className="form-hint">Coming soon - for future cost tracking</small>
                     </div>
                     <div className="form-group">
-                      <label>Hourly Rate (Optional)</label>
+                      <label>Hourly Rate {userRole === 'super_admin' ? '($/hr)' : '(Optional)'}</label>
                       <input
                         type="number"
                         step="0.01"
+                        min="0"
                         value={newRole.hourly_rate}
                         onChange={(e) => setNewRole({...newRole, hourly_rate: e.target.value})}
-                        placeholder="Coming soon"
-                        disabled
-                        style={{ opacity: 0.6, cursor: 'not-allowed' }}
+                        placeholder={userRole === 'super_admin' ? 'e.g. 18.00' : 'Super admin only'}
+                        disabled={userRole !== 'super_admin'}
+                        style={userRole !== 'super_admin' ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
                       />
-                      <small className="form-hint">Coming soon - for future billing calculations</small>
+                      {userRole !== 'super_admin' && (
+                        <small className="form-hint">Only super admins can set pay rates</small>
+                      )}
                     </div>
                     <div className="form-group">
                       <label>Status</label>
@@ -4320,17 +4384,20 @@ function App() {
                       <small className="form-hint">Coming soon - for future cost tracking</small>
                     </div>
                     <div className="form-group">
-                      <label>Hourly Rate (Optional)</label>
+                      <label>Hourly Rate {userRole === 'super_admin' ? '($/hr)' : '(Optional)'}</label>
                       <input
                         type="number"
                         step="0.01"
+                        min="0"
                         value={editingRole.hourly_rate || ''}
                         onChange={(e) => setEditingRole({...editingRole, hourly_rate: e.target.value})}
-                        placeholder="Coming soon"
-                        disabled
-                        style={{ opacity: 0.6, cursor: 'not-allowed' }}
+                        placeholder={userRole === 'super_admin' ? 'e.g. 18.00' : 'Super admin only'}
+                        disabled={userRole !== 'super_admin'}
+                        style={userRole !== 'super_admin' ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
                       />
-                      <small className="form-hint">Coming soon - for future billing calculations</small>
+                      {userRole !== 'super_admin' && (
+                        <small className="form-hint">Only super admins can set pay rates</small>
+                      )}
                     </div>
                     <div className="form-group">
                       <label>Status</label>
@@ -5949,6 +6016,61 @@ function App() {
           </div>
 
           <div className="print-section">
+            <h3>Role & Pay Breakdown</h3>
+            <table className="print-table">
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Hours</th>
+                  <th>Rate</th>
+                  <th>Earned</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  // Group work sessions (exclude Lunch) by role
+                  const roleMap: Record<string, number> = {}
+                  timesheetToPrint.sessions
+                    .filter((s: any) => s.project !== 'Lunch')
+                    .forEach((s: any) => {
+                      roleMap[s.role] = (roleMap[s.role] || 0) + (s.duration || 0)
+                    })
+
+                  let printTotalEarned = 0
+                  const rows = Object.entries(roleMap).map(([roleName, minutes]) => {
+                    const roleData = roles.find((r: any) => r.role_name === roleName)
+                    const rate = roleData?.hourly_rate ? parseFloat(roleData.hourly_rate) : null
+                    const hours = (minutes as number) / 60
+                    const earned = rate !== null ? hours * rate : null
+                    if (earned !== null) printTotalEarned += earned
+
+                    const h = Math.floor((minutes as number) / 60)
+                    const m = (minutes as number) % 60
+                    return (
+                      <tr key={roleName}>
+                        <td>{roleName}</td>
+                        <td>{h}h {m}m</td>
+                        <td>{rate !== null ? `$${rate.toFixed(2)}/hr` : <em style={{ color: '#999' }}>No rate set</em>}</td>
+                        <td>{earned !== null ? `$${earned.toFixed(2)}` : '—'}</td>
+                      </tr>
+                    )
+                  })
+
+                  return (
+                    <>
+                      {rows}
+                      <tr style={{ borderTop: '2px solid #000', fontWeight: 'bold' }}>
+                        <td colSpan={3}><strong>Total Earnings</strong></td>
+                        <td><strong>${printTotalEarned.toFixed(2)}</strong></td>
+                      </tr>
+                    </>
+                  )
+                })()}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="print-section">
             <h3>Week Summary</h3>
             <table className="print-table">
               <tbody>
@@ -5983,13 +6105,32 @@ function App() {
                   <td><strong>Days Worked:</strong></td>
                   <td>
                     {(() => {
-                      // Count unique dates
                       const uniqueDates = new Set(
                         timesheetToPrint.sessions
                           .filter((s: any) => s.project !== 'Lunch')
                           .map((s: any) => new Date(s.start_time).toDateString())
                       )
                       return uniqueDates.size
+                    })()}
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Total Pay:</strong></td>
+                  <td>
+                    {(() => {
+                      let total = 0
+                      const roleMap: Record<string, number> = {}
+                      timesheetToPrint.sessions
+                        .filter((s: any) => s.project !== 'Lunch')
+                        .forEach((s: any) => {
+                          roleMap[s.role] = (roleMap[s.role] || 0) + (s.duration || 0)
+                        })
+                      Object.entries(roleMap).forEach(([roleName, minutes]) => {
+                        const roleData = roles.find((r: any) => r.role_name === roleName)
+                        const rate = roleData?.hourly_rate ? parseFloat(roleData.hourly_rate) : null
+                        if (rate !== null) total += ((minutes as number) / 60) * rate
+                      })
+                      return total > 0 ? `$${total.toFixed(2)}` : 'Rates not set'
                     })()}
                   </td>
                 </tr>
