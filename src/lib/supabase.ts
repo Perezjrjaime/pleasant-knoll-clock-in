@@ -43,6 +43,7 @@ export interface UserRole {
   email: string
   full_name: string
   role: 'user' | 'approved' | 'admin' | 'super_admin'
+  employee_hourly_rate?: string | null
   approved_at?: string
   approved_by?: string
   created_at?: string
@@ -256,5 +257,19 @@ export const supabaseOperations = {
     
     if (error) throw error
     return data
+  },
+
+  async updateEmployeeHourlyRate(userId: string, hourlyRate: string | null) {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .update({ 
+        employee_hourly_rate: hourlyRate,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId)
+      .select()
+    
+    if (error) throw error
+    return data[0]
   }
 }
