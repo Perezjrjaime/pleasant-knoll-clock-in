@@ -135,7 +135,8 @@ function App() {
     name: '',
     unit: 'SY',
     description: '',
-    status: 'active' as 'active' | 'inactive'
+    status: 'active' as 'active' | 'inactive',
+    unit_cost: ''
   })
   const [editingMaterial, setEditingMaterial] = useState<any | null>(null)
   const [showEditMaterial, setShowEditMaterial] = useState(false)
@@ -189,6 +190,15 @@ function App() {
   const [showPrintProjectReport, setShowPrintProjectReport] = useState(false)
   const [showPrintAdminTimesheet, setShowPrintAdminTimesheet] = useState(false)
   const [timesheetToPrint, setTimesheetToPrint] = useState<any>(null)
+
+  // Calendar state
+  const [showCalendar, setShowCalendar] = useState(false)
+  const [calendarDate, setCalendarDate] = useState(new Date())
+  const [calendarEntries, setCalendarEntries] = useState<any[]>([])
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState<Date | null>(null)
+  const [showAddCalendarEntry, setShowAddCalendarEntry] = useState(false)
+  const [newCalendarEntryText, setNewCalendarEntryText] = useState('')
+  const [calendarEntryDate, setCalendarEntryDate] = useState('')
 
   // Authentication state
   const [session, setSession] = useState<Session | null>(null)
@@ -1155,7 +1165,14 @@ function App() {
         .eq('user_id', user.id)
         .single()
 
-      const userName = userRoleData?.full_name || userRoleData?.email || 'Unknown User'
+      const rawName = userRoleData?.full_name || ''
+      const userName = rawName
+        ? (() => {
+            const parts = rawName.trim().split(' ')
+            if (parts.length === 1) return parts[0]
+            return `${parts[0].charAt(0)}. ${parts.slice(1).join(' ')}`
+          })()
+        : (userRoleData?.email || 'Unknown User')
 
       const { data, error } = await supabase
         .from('project_notes')
@@ -1844,6 +1861,9 @@ function App() {
           unit: newMaterial.unit.trim(),
           description: newMaterial.description.trim(),
           status: newMaterial.status,
+          unit_cost: newMaterial.unit_cost
+            ? +newMaterial.unit_cost
+            : null,
           created_by: user?.id
         }])
         .select()
@@ -1855,7 +1875,7 @@ function App() {
       }
 
       setMaterials(prev => [...prev, data])
-      setNewMaterial({ name: '', unit: 'SY', description: '', status: 'active' })
+      setNewMaterial({ name: '', unit: 'SY', description: '', status: 'active', unit_cost: '' })
       setShowAddMaterial(false)
       showToast('Material added successfully!', 'success')
     } catch (err) {
@@ -1875,7 +1895,8 @@ function App() {
           name: editingMaterial.name,
           unit: editingMaterial.unit,
           description: editingMaterial.description,
-          status: editingMaterial.status
+          status: editingMaterial.status,
+          unit_cost: editingMaterial.unit_cost ? parseFloat(editingMaterial.unit_cost) : null
         })
         .eq('id', editingMaterial.id)
 
@@ -2153,7 +2174,7 @@ function App() {
           .from('session_materials')
           .select(`
             *,
-            materials (name, unit)
+            materials (name, unit, unit_cost)
           `)
           .in('session_id', sessionIds)
         
@@ -2165,7 +2186,7 @@ function App() {
         .from('session_materials')
         .select(`
           *,
-          materials (name, unit)
+          materials (name, unit, unit_cost)
         `)
         .eq('project', project.name)
         .is('session_id', null)
@@ -2219,11 +2240,15 @@ function App() {
       const workMinutes = totalMinutes - lunchMinutes
 
       // Calculate materials totals
-      const materialTotals: Record<string, { quantity: number, unit: string }> = {}
+      const materialTotals: Record<string, { quantity: number, unit: string, unitCost: number | null }> = {}
       materialsData.forEach((sm: any) => {
         const key = sm.materials.name
         if (!materialTotals[key]) {
-          materialTotals[key] = { quantity: 0, unit: sm.materials.unit }
+          materialTotals[key] = {
+            quantity: 0,
+            unit: sm.materials.unit,
+            unitCost: sm.materials.unit_cost != null ? parseFloat(sm.materials.unit_cost) : null
+          }
         }
         materialTotals[key].quantity += parseFloat(sm.quantity)
       })
@@ -2310,6 +2335,74 @@ function App() {
       showToast('Error reactivating project', 'error')
     }
   }
+
+  // Calendar Functions
+
+  const loadCalendarEntries = async (refDate: Date) => {
+    if (!user) return
+    const start = new Date(refDate.getFullYear(), refDate.getMonth(), 1).toISOString().split('T')[0]
+    const end = new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0).toISOString().split('T')[0]
+    try {
+      const { data, error } = await supabase
+        .from('calendar_entries')
+        .select('*')
+        .gte('entry_date', start)
+        .lte('entry_date', end)
+        .order('entry_date', { ascending: true })
+      if (!error) setCalendarEntries(data || [])
+    } catch (e) {
+      console.error('Error loading calendar entries:', e)
+    }
+  }
+
+  const addCalendarEntry = async () => {
+    if (!user || !newCalendarEntryText.trim() || !calendarEntryDate) return
+    try {
+      const { data: userRoleData } = await supabase
+        .from('user_roles')
+        .select('full_name, email')
+        .eq('user_id', user.id)
+        .single()
+      const rawName = userRoleData?.full_name || ''
+      const authorName = rawName
+        ? (() => {
+            const parts = rawName.trim().split(' ')
+            if (parts.length === 1) return parts[0]
+            return `${parts[0].charAt(0)}. ${parts.slice(1).join(' ')}`
+          })()
+        : (userRoleData?.email || 'Unknown')
+      const { data, error } = await supabase
+        .from('calendar_entries')
+        .insert([{ user_id: user.id, entry_date: calendarEntryDate, entry_text: newCalendarEntryText.trim(), author_name: authorName }])
+        .select()
+        .single()
+      if (error) { showToast('Failed to save entry', 'error'); return }
+      setCalendarEntries(prev => [...prev, data])
+      setNewCalendarEntryText('')
+      setShowAddCalendarEntry(false)
+      showToast('Entry added!', 'success')
+    } catch (e) {
+      console.error('Error adding calendar entry:', e)
+      showToast('Failed to save entry', 'error')
+    }
+  }
+
+  const deleteCalendarEntry = async (id: string) => {
+    try {
+      const { error } = await supabase.from('calendar_entries').delete().eq('id', id)
+      if (!error) setCalendarEntries(prev => prev.filter(e => e.id !== id))
+    } catch (e) {
+      console.error('Error deleting calendar entry:', e)
+    }
+  }
+
+  // Load calendar data when calendar opens or month changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (showCalendar && user) {
+      loadCalendarEntries(calendarDate)
+    }
+  }, [showCalendar, calendarDate, user])
 
   // Print Functions
   
@@ -2938,7 +3031,7 @@ function App() {
                 <button
                   className="add-session-icon-btn"
                   onClick={() => setShowAddSessionModal(true)}
-                  title="Add Session Manually"
+                  title="Add Entry"
                 >
                   <Plus size={24} />
                 </button>
@@ -3197,6 +3290,11 @@ function App() {
                           {material.description && (
                             <div className="material-description">{material.description}</div>
                           )}
+                          {userRole === 'super_admin' && material.unit_cost != null && (
+                            <div className="material-cost" style={{ color: '#2e7d32', fontWeight: 600, fontSize: '0.85rem', marginTop: '2px' }}>
+                              ${parseFloat(material.unit_cost).toFixed(2)} / {material.unit}
+                            </div>
+                          )}
                         </div>
                         <div className="material-actions">
                           <button
@@ -3233,6 +3331,11 @@ function App() {
                           <div className="material-unit">Unit: {material.unit}</div>
                           {material.description && (
                             <div className="material-description">{material.description}</div>
+                          )}
+                          {userRole === 'super_admin' && material.unit_cost != null && (
+                            <div className="material-cost" style={{ color: '#2e7d32', fontWeight: 600, fontSize: '0.85rem', marginTop: '2px' }}>
+                              ${parseFloat(material.unit_cost).toFixed(2)} / {material.unit}
+                            </div>
                           )}
                         </div>
                         <div className="material-actions">
@@ -3303,6 +3406,19 @@ function App() {
                         <option value="inactive">Inactive</option>
                       </select>
                     </div>
+                    {userRole === 'super_admin' && (
+                      <div className="form-group">
+                        <label>Cost per {newMaterial.unit || 'Unit'} ($)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={newMaterial.unit_cost}
+                          onChange={(e) => setNewMaterial({...newMaterial, unit_cost: e.target.value})}
+                          placeholder="e.g., 2.50"
+                        />
+                      </div>
+                    )}
                     <div className="modal-actions">
                       <button className="btn-secondary" onClick={() => setShowAddMaterial(false)}>
                         Cancel
@@ -3364,6 +3480,19 @@ function App() {
                         <option value="inactive">Inactive</option>
                       </select>
                     </div>
+                    {userRole === 'super_admin' && (
+                      <div className="form-group">
+                        <label>Cost per {editingMaterial.unit || 'Unit'} ($)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={editingMaterial.unit_cost ?? ''}
+                          onChange={(e) => setEditingMaterial({...editingMaterial, unit_cost: e.target.value})}
+                          placeholder="e.g., 2.50"
+                        />
+                      </div>
+                    )}
                     <div className="modal-actions">
                       <button className="btn-secondary" onClick={() => setShowEditMaterial(false)}>
                         Cancel
@@ -4434,7 +4563,7 @@ function App() {
                   <button
                     className="add-session-icon-btn"
                     onClick={() => setShowAddSessionModal(true)}
-                    title="Add Session Manually"
+                    title="Add Entry"
                   >
                     <Plus size={24} />
                   </button>
@@ -4740,7 +4869,7 @@ function App() {
         <div className="app-header">
           <div className="user-info">
             <div className="user-details">
-              <div className="user-avatar">
+              <div className="user-avatar" onClick={() => setShowCalendar(true)} style={{ cursor: 'pointer' }} title="Open Calendar">
                 <User size={20} />
               </div>
               <div className="user-text">
@@ -4987,20 +5116,49 @@ function App() {
                     <tr>
                       <th>Material</th>
                       <th>Quantity</th>
+                      {userRole === 'super_admin' && (
+                        <>
+                          <th>Unit Cost</th>
+                          <th>Total Cost</th>
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.entries(projectStats.materialTotals)
-                      .sort((a, b) => (b[1] as any).quantity - (a[1] as any).quantity)
-                      .map(([material, data]) => {
-                        const materialData = data as { quantity: number; unit: string }
-                        return (
-                          <tr key={material}>
-                            <td><strong>{material}</strong></td>
-                            <td>{materialData.quantity} {materialData.unit}</td>
-                          </tr>
-                        )
-                      })}
+                    {(() => {
+                      let grandMaterialTotal = 0
+                      const rows = Object.entries(projectStats.materialTotals)
+                        .sort((a, b) => (b[1] as any).quantity - (a[1] as any).quantity)
+                        .map(([material, data]) => {
+                          const materialData = data as { quantity: number; unit: string; unitCost: number | null }
+                          const totalCost = materialData.unitCost != null ? materialData.quantity * materialData.unitCost : null
+                          if (totalCost != null) grandMaterialTotal += totalCost
+                          return (
+                            <tr key={material}>
+                              <td><strong>{material}</strong></td>
+                              <td>{materialData.quantity} {materialData.unit}</td>
+                              {userRole === 'super_admin' && (
+                                <>
+                                  <td>{materialData.unitCost != null ? `$${materialData.unitCost.toFixed(2)}/${materialData.unit}` : <span style={{color: '#999'}}>No cost</span>}</td>
+                                  <td>{totalCost != null ? `$${totalCost.toFixed(2)}` : '—'}</td>
+                                </>
+                              )}
+                            </tr>
+                          )
+                        })
+                      return (
+                        <>
+                          {rows}
+                          {userRole === 'super_admin' && grandMaterialTotal > 0 && (
+                            <tr style={{ borderTop: '2px solid #333', fontWeight: 'bold', backgroundColor: '#f0f0f0' }}>
+                              <td colSpan={2}><strong>TOTAL MATERIAL COST</strong></td>
+                              <td></td>
+                              <td><strong>${grandMaterialTotal.toFixed(2)}</strong></td>
+                            </tr>
+                          )}
+                        </>
+                      )
+                    })()}
                   </tbody>
                 </table>
               ) : (
@@ -5255,7 +5413,7 @@ function App() {
       {showAddSessionModal && (
         <div className="modal-overlay" onClick={() => setShowAddSessionModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Add Session Manually</h3>
+            <h3>Add Entry</h3>
             <div className="edit-session-form">
               <div className="form-group">
                 <label>Date:</label>
@@ -5324,7 +5482,7 @@ function App() {
                   className="save-btn"
                   onClick={addManualSession}
                 >
-                  Add Session
+                  Add Entry
                 </button>
                 <button
                   className="cancel-btn"
@@ -5767,6 +5925,32 @@ function App() {
         </div>
       )}
 
+      {/* Add Calendar Entry Modal */}
+      {showAddCalendarEntry && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 20px' }} onClick={() => { setShowAddCalendarEntry(false); setNewCalendarEntryText('') }}>
+          <div style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 6px', fontSize: 17, fontWeight: 700 }}>Add Entry</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: '#999' }}>
+              {new Date(calendarEntryDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </p>
+            <textarea
+              autoFocus
+              value={newCalendarEntryText}
+              onChange={e => setNewCalendarEntryText(e.target.value)}
+              placeholder="Type your entry here..."
+              rows={4}
+              style={{ width: '100%', borderRadius: 10, border: '2px solid #e0e0e0', padding: '10px 12px', fontSize: 15, resize: 'none', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
+              onFocus={e => e.target.style.borderColor = '#2ECC71'}
+              onBlur={e => e.target.style.borderColor = '#e0e0e0'}
+            />
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button onClick={addCalendarEntry} disabled={!newCalendarEntryText.trim()} style={{ flex: 1, backgroundColor: newCalendarEntryText.trim() ? '#2ECC71' : '#ccc', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 0', fontWeight: 700, fontSize: 15, cursor: newCalendarEntryText.trim() ? 'pointer' : 'default' }}>Save</button>
+              <button onClick={() => { setShowAddCalendarEntry(false); setNewCalendarEntryText('') }} style={{ flex: 1, backgroundColor: '#f0f0f0', color: '#333', border: 'none', borderRadius: 10, padding: '12px 0', fontWeight: 600, fontSize: 15, cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Confirmation Modal */}
       {confirmationModal.show && (
         <div className="modal-overlay" onClick={() => setConfirmationModal({ ...confirmationModal, show: false })}>
@@ -5968,20 +6152,49 @@ function App() {
                   <tr>
                     <th>Material</th>
                     <th>Quantity</th>
+                    {userRole === 'super_admin' && (
+                      <>
+                        <th>Unit Cost</th>
+                        <th>Total Cost</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(projectStats.materialTotals)
-                    .sort((a, b) => (b[1] as any).quantity - (a[1] as any).quantity)
-                    .map(([material, data]) => {
-                      const materialData = data as { quantity: number; unit: string }
-                      return (
-                        <tr key={material}>
-                          <td>{material}</td>
-                          <td>{materialData.quantity} {materialData.unit}</td>
-                        </tr>
-                      )
-                    })}
+                  {(() => {
+                    let grandMaterialTotal = 0
+                    const rows = Object.entries(projectStats.materialTotals)
+                      .sort((a, b) => (b[1] as any).quantity - (a[1] as any).quantity)
+                      .map(([material, data]) => {
+                        const materialData = data as { quantity: number; unit: string; unitCost: number | null }
+                        const totalCost = materialData.unitCost != null ? materialData.quantity * materialData.unitCost : null
+                        if (totalCost != null) grandMaterialTotal += totalCost
+                        return (
+                          <tr key={material}>
+                            <td>{material}</td>
+                            <td>{materialData.quantity} {materialData.unit}</td>
+                            {userRole === 'super_admin' && (
+                              <>
+                                <td>{materialData.unitCost != null ? `$${materialData.unitCost.toFixed(2)}/${materialData.unit}` : '—'}</td>
+                                <td>{totalCost != null ? `$${totalCost.toFixed(2)}` : '—'}</td>
+                              </>
+                            )}
+                          </tr>
+                        )
+                      })
+                    return (
+                      <>
+                        {rows}
+                        {userRole === 'super_admin' && grandMaterialTotal > 0 && (
+                          <tr style={{ borderTop: '2px solid #333', fontWeight: 'bold' }}>
+                            <td colSpan={2}><strong>TOTAL MATERIAL COST</strong></td>
+                            <td></td>
+                            <td><strong>${grandMaterialTotal.toFixed(2)}</strong></td>
+                          </tr>
+                        )}
+                      </>
+                    )
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -6188,6 +6401,123 @@ function App() {
               <p>{timesheetToPrint.sessions[0].admin_notes}</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Calendar Modal */}
+      {showCalendar && (
+        <div
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}
+          onClick={() => { setShowCalendar(false); setSelectedCalendarDay(null) }}
+        >
+          <div
+            style={{ backgroundColor: '#fff', borderRadius: '20px 20px 0 0', height: '96vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 -4px 24px rgba(0,0,0,0.2)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px 12px', borderBottom: '1px solid #eee', flexShrink: 0 }}>
+              <button
+                onClick={() => { const d = new Date(calendarDate); d.setMonth(d.getMonth() - 1); setCalendarDate(d); setSelectedCalendarDay(null) }}
+                style={{ background: 'none', border: 'none', fontSize: 26, cursor: 'pointer', color: '#333', padding: '0 8px', lineHeight: 1 }}
+              >‹</button>
+              <div style={{ fontWeight: 700, fontSize: 17, color: '#1a1a1a' }}>
+                {calendarDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button
+                  onClick={() => { const d = new Date(calendarDate); d.setMonth(d.getMonth() + 1); setCalendarDate(d); setSelectedCalendarDay(null) }}
+                  style={{ background: 'none', border: 'none', fontSize: 26, cursor: 'pointer', color: '#333', padding: '0 8px', lineHeight: 1 }}
+                >›</button>
+                <button onClick={() => { setShowCalendar(false); setSelectedCalendarDay(null) }} style={{ background: '#f0f0f0', border: 'none', borderRadius: '50%', width: 30, height: 30, cursor: 'pointer', fontSize: 15, color: '#666', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
+              </div>
+            </div>
+
+            {/* Calendar Body */}
+            <div style={{ overflow: 'hidden', flex: 1, padding: '8px 12px 10px', display: 'flex', flexDirection: 'column' }}>
+              {(() => {
+                const entriesByDay: Record<string, any[]> = {}
+                calendarEntries.forEach(e => {
+                  const key = e.entry_date
+                  if (!entriesByDay[key]) entriesByDay[key] = []
+                  entriesByDay[key].push(e)
+                })
+                const todayKey = new Date().toLocaleDateString('en-CA')
+                const year = calendarDate.getFullYear()
+                const month = calendarDate.getMonth()
+                const firstWeekday = new Date(year, month, 1).getDay()
+                const daysInMonth = new Date(year, month + 1, 0).getDate()
+                const cells: (Date | null)[] = []
+                for (let i = 0; i < firstWeekday; i++) cells.push(null)
+                for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d))
+                while (cells.length % 7 !== 0) cells.push(null)
+                return (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', marginBottom: 4, flexShrink: 0 }}>
+                      {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                        <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#aaa', paddingBottom: 6 }}>{d}</div>
+                      ))}
+                    </div>
+                    <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gridAutoRows: '1fr', gap: 3, minHeight: 0 }}>
+                      {cells.map((date, i) => {
+                        if (!date) return <div key={`empty-${i}`} />
+                        const key = date.toLocaleDateString('en-CA')
+                        const dayEntries = entriesByDay[key] || []
+                        const isToday = key === todayKey
+                        const isSelected = selectedCalendarDay?.toLocaleDateString('en-CA') === key
+                        return (
+                          <div key={key} onClick={() => setSelectedCalendarDay(isSelected ? null : date)} style={{ minHeight: 0, cursor: 'pointer', borderRadius: 8, backgroundColor: isSelected ? '#2ECC71' : isToday ? '#E8F8F0' : '#fafafa', border: `2px solid ${isSelected ? '#2ECC71' : isToday ? '#2ECC71' : '#eee'}`, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start', padding: '3px 4px', overflow: 'hidden' }}>
+                            <span style={{ fontSize: 11, fontWeight: isToday ? 700 : 500, color: isSelected ? '#fff' : isToday ? '#27AE60' : '#333', lineHeight: '14px', alignSelf: 'center', width: '100%', textAlign: 'center' }}>{date.getDate()}</span>
+                            {dayEntries.slice(0, 2).map((entry: any, idx: number) => (
+                              <div key={idx} style={{ fontSize: 11, lineHeight: '13px', color: isSelected ? '#fff' : '#2ECC71', fontWeight: 600, width: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', marginTop: 1 }}>
+                                {entry.author_name ? `${entry.author_name}: ` : ''}{entry.entry_text}
+                              </div>
+                            ))}
+                            {dayEntries.length > 2 && (
+                              <div style={{ fontSize: 8, color: isSelected ? '#fff' : '#999', marginTop: 1 }}>+{dayEntries.length - 2} more</div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+
+            {/* Selected Day Detail Panel */}
+            {selectedCalendarDay && (() => {
+              const key = selectedCalendarDay.toLocaleDateString('en-CA')
+              const dayEntries = calendarEntries.filter(e => e.entry_date === key)
+              return (
+                <div style={{ borderTop: '2px solid #2ECC71', backgroundColor: '#fff', padding: '14px 20px 20px', flexShrink: 0, maxHeight: '45vh', overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#1a1a1a' }}>
+                      {selectedCalendarDay.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                    </h3>
+                    <button
+                      onClick={() => { setCalendarEntryDate(key); setShowAddCalendarEntry(true) }}
+                      style={{ backgroundColor: '#2ECC71', color: '#fff', border: 'none', borderRadius: 20, padding: '6px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600, flexShrink: 0 }}
+                    >+ Add Entry</button>
+                  </div>
+                  {dayEntries.length === 0 ? (
+                    <p style={{ color: '#aaa', fontSize: 13, margin: 0 }}>No entries on this day.</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {dayEntries.map((entry: any) => (
+                        <div key={entry.id} style={{ backgroundColor: '#f9f9f9', borderRadius: 10, padding: '10px 14px', borderLeft: '4px solid #2ECC71', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <div style={{ flex: 1 }}>
+            {entry.author_name && <div style={{ fontSize: 12, fontWeight: 700, color: '#2ECC71', marginBottom: 2 }}>{entry.author_name}</div>}
+            <p style={{ margin: 0, fontSize: 17, color: '#1a1a1a', lineHeight: 1.5 }}>{entry.entry_text}</p>
+          </div>
+                          <button onClick={() => deleteCalendarEntry(entry.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: 16, flexShrink: 0, padding: 0, lineHeight: 1, visibility: entry.user_id === user?.id ? 'visible' : 'hidden' }}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
         </div>
       )}
     </div>
