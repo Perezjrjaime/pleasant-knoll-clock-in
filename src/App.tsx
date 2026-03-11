@@ -1345,6 +1345,8 @@ function App() {
           .lte('submitted_at', endDate.toISOString())
       }
       
+      allQuery = allQuery.order('start_time', { ascending: true })
+      
       const { data: allData, error: allDataError } = await allQuery
 
       console.log('allData query result:', { allData, allDataError })
@@ -1496,6 +1498,10 @@ function App() {
         // Update group status to reflect the actual status of sessions
         // Use the most common status, prioritizing: approved > submitted > rejected > draft
         Object.values(allGrouped).forEach((group: any) => {
+          // Sort sessions by start_time so they appear in chronological order
+          group.sessions.sort((a: any, b: any) =>
+            new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+          )
           const statuses = group.sessions.map((s: any) => s.status)
           if (statuses.every((s: string) => s === 'approved')) group.status = 'approved'
           else if (statuses.some((s: string) => s === 'submitted')) group.status = 'submitted'
@@ -3992,6 +3998,12 @@ function App() {
                                         <strong>Location:</strong> {session.location}
                                       </div>
                                     </div>
+                                    {/* Session note left by employee */}
+                                    {session.notes && (
+                                      <div className="session-notes-display" style={{ marginTop: '6px', padding: '6px 10px', background: '#f0f9ff', borderLeft: '3px solid #3b82f6', borderRadius: '4px', fontSize: '13px', color: '#1e40af' }}>
+                                        📝 <strong>Session Note:</strong> {session.notes}
+                                      </div>
+                                    )}
                                     {/* Materials used in this session */}
                                     {session.materials && session.materials.length > 0 && (
                                       <div className="session-materials-used">
