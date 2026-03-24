@@ -53,6 +53,9 @@ function App() {
   // Track recent modifications to prevent premature reloading
   const [lastModificationTime, setLastModificationTime] = useState<number>(0)
   
+  // Prevent double-tap saving on clock out / transfer
+  const [isSaving, setIsSaving] = useState(false)
+  
   // Week navigation state (0 = current week, -1 = last week, -2 = 2 weeks ago)
   const [weekOffset, setWeekOffset] = useState<number>(0)
   
@@ -1708,6 +1711,17 @@ function App() {
           if (error) {
             console.error('❌ Error deleting session:', error)
             showToast('Failed to delete session: ' + error.message, 'error')
+          } else if (!data || data.length === 0) {
+            // Supabase returned no error but deleted nothing — RLS policy blocked it
+            console.warn('⚠️ Delete blocked by database policy. Session status:', sessionToDelete?.status)
+            const sessionStatus = sessionToDelete?.status
+            if (sessionStatus === 'submitted') {
+              showToast('Cannot delete a submitted session. Ask your admin to remove it.', 'error')
+            } else if (sessionStatus === 'approved') {
+              showToast('Cannot delete an approved session. Contact your admin.', 'error')
+            } else {
+              showToast('Session could not be deleted. Please try again or contact your admin.', 'error')
+            }
           } else {
             console.log('✅ Deleted from database successfully')
             console.log('Deleted row:', data)
@@ -2444,6 +2458,7 @@ function App() {
   }
 
   const handleClockAction = async () => {
+    if (isSaving) return
     const newLocation = getLocationFromProject(selectedProject)
     const now = new Date()
     
@@ -2490,6 +2505,7 @@ function App() {
         })
         
         // Save to database with error handling
+        setIsSaving(true)
         try {
           await saveWorkSession(sessionData)
           console.log('✅ Transfer session saved to database')
@@ -2498,6 +2514,8 @@ function App() {
         } catch (error) {
           console.error('❌ Failed to save transfer session:', error)
           showToast('Warning: Session may not have saved. Please check your timesheet.', 'warning')
+        } finally {
+          setIsSaving(false)
         }
       }
       // Start new session
@@ -2629,47 +2647,54 @@ function App() {
                       )}
                       <button 
                         className="main-action-btn end-day-btn"
+                        disabled={isSaving}
                         onClick={async () => {
-                          const now = new Date()
-                          if (workStartTime && currentRole) {
-                            const duration = calculateDuration(workStartTime, now)
-                            
-                            // Check minimum duration (1 minute)
-                            if (duration < 1) {
-                              showToast('You must work for at least 1 minute before clocking out', 'warning')
-                              return
+                          if (isSaving) return
+                          setIsSaving(true)
+                          try {
+                            const now = new Date()
+                            if (workStartTime && currentRole) {
+                              const duration = calculateDuration(workStartTime, now)
+                              
+                              // Check minimum duration (1 minute)
+                              if (duration < 1) {
+                                showToast('You must work for at least 1 minute before clocking out', 'warning')
+                                return
+                              }
+                              
+                              const sessionData = {
+                                project: currentLocation === 'The Shop' ? 'The Shop' : 
+                                  currentLocation === 'Lunch' ? 'Lunch' :
+                                  projects.find(p => p.location === currentLocation)?.name || 'Unknown',
+                                location: currentLocation!,
+                                role: currentRole,
+                                startTime: workStartTime,
+                                endTime: now,
+                                duration,
+                                notes: sessionNotes
+                              }
+                              
+                              // Save to local state
+                              setTodaysSessions(prev => [...prev, sessionData])
+                              
+                              // Save to database
+                              await saveWorkSession(sessionData)
                             }
+                            // Clear active session from localStorage
+                            localStorage.removeItem('activeWorkSession')
+                            console.log('🗑️ Cleared active session - clocked out')
                             
-                            const sessionData = {
-                              project: currentLocation === 'The Shop' ? 'The Shop' : 
-                                currentLocation === 'Lunch' ? 'Lunch' :
-                                projects.find(p => p.location === currentLocation)?.name || 'Unknown',
-                              location: currentLocation!,
-                              role: currentRole,
-                              startTime: workStartTime,
-                              endTime: now,
-                              duration,
-                              notes: sessionNotes
-                            }
-                            
-                            // Save to local state
-                            setTodaysSessions(prev => [...prev, sessionData])
-                            
-                            // Save to database
-                            await saveWorkSession(sessionData)
+                            setIsWorking(false)
+                            setCurrentLocation(null)
+                            setCurrentRole(null)
+                            setWorkStartTime(null)
+                            setSessionNotes('')
+                          } finally {
+                            setIsSaving(false)
                           }
-                          // Clear active session from localStorage
-                          localStorage.removeItem('activeWorkSession')
-                          console.log('🗑️ Cleared active session - clocked out')
-                          
-                          setIsWorking(false)
-                          setCurrentLocation(null)
-                          setCurrentRole(null)
-                          setWorkStartTime(null)
-                          setSessionNotes('')
                         }}
                       >
-                        End Work Day
+                        {isSaving ? 'Saving...' : 'End Work Day'}
                       </button>
                     </>
                   )}
