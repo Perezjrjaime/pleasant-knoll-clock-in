@@ -55,6 +55,9 @@ function App() {
   
   // Prevent double-tap saving on clock out / transfer
   const [isSaving, setIsSaving] = useState(false)
+
+  // Track which days are expanded in the admin timesheet session view
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
   
   // Week navigation state (0 = current week, -1 = last week, -2 = 2 weeks ago)
   const [weekOffset, setWeekOffset] = useState<number>(0)
@@ -3949,34 +3952,39 @@ function App() {
                       
                       return (
                         <div key={index} className={`timesheet-card ${timesheet.status}`}>
-                          <div className="timesheet-header" onClick={() => setSelectedTimesheet(isSelected ? null : timesheet)}>
-                            <div className="timesheet-user">
-                              <div className="timesheet-name">
-                                {timesheet.userName} {userRole === 'super_admin' && userRoleBadge && <span style={{ color: '#3b82f6', fontWeight: 600 }}>{userRoleBadge}</span>}
+                          <div className="timesheet-header" onClick={() => { setSelectedTimesheet(isSelected ? null : timesheet); setExpandedDays(new Set()); }}>
+                            {/* Row 1: Name + Status badge */}
+                            <div className="timesheet-header-top">
+                              <div className="timesheet-user">
+                                <div className="timesheet-name">
+                                  {timesheet.userName} {userRole === 'super_admin' && userRoleBadge && <span style={{ color: '#3b82f6', fontWeight: 600 }}>{userRoleBadge}</span>}
+                                </div>
+                                <div className="timesheet-initials">Initials: {timesheet.employeeInitials || 'N/A'}</div>
                               </div>
-                              <div className="timesheet-initials">Initials: {timesheet.employeeInitials || 'N/A'}</div>
+                              <div className={`timesheet-status-badge ${timesheet.status}`}>
+                                {timesheet.status.charAt(0).toUpperCase() + timesheet.status.slice(1)}
+                              </div>
                             </div>
-                            <div className="timesheet-details">
-                              <div className="timesheet-hours">
-                                {workHours}h {workMins}m
-                                {lunchMinutes > 0 && (
-                                  <span style={{fontSize: '0.85em', color: '#666', marginLeft: '4px'}}>
-                                    (+{lunchHours > 0 ? `${lunchHours}h ` : ''}{lunchMins}m lunch)
-                                  </span>
+                            {/* Row 2: Hours + week info + print */}
+                            <div className="timesheet-header-bottom">
+                              <div className="timesheet-details">
+                                <div className="timesheet-hours">
+                                  {workHours}h {workMins}m
+                                  {lunchMinutes > 0 && (
+                                    <span style={{fontSize: '0.8em', color: '#666', marginLeft: '4px'}}>
+                                      (+{lunchHours > 0 ? `${lunchHours}h ` : ''}{lunchMins}m lunch)
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="timesheet-week">
+                                  Week ending: {timesheet.weekEndingDate ? new Date(timesheet.weekEndingDate).toLocaleDateString() : 'N/A'}
+                                </div>
+                                {timesheet.submittedAt && (
+                                  <div className="timesheet-submitted">
+                                    Submitted: {new Date(timesheet.submittedAt).toLocaleDateString()}
+                                  </div>
                                 )}
                               </div>
-                              <div className="timesheet-week">
-                                Week ending: {timesheet.weekEndingDate ? new Date(timesheet.weekEndingDate).toLocaleDateString() : 'N/A'}
-                              </div>
-                              {timesheet.submittedAt && (
-                                <div className="timesheet-submitted">
-                                  Submitted: {new Date(timesheet.submittedAt).toLocaleDateString()}
-                                </div>
-                              )}
-                            </div>
-                            <div className={`timesheet-status-badge ${timesheet.status}`}>
-                              {timesheet.status.charAt(0).toUpperCase() + timesheet.status.slice(1)}
-                            </div>
                             {/* Print button for approved timesheets */}
                             {timesheet.status === 'approved' && (
                               <button
@@ -3986,83 +3994,119 @@ function App() {
                                   handlePrintAdminTimesheet(timesheet)
                                 }}
                                 title="Print Approved Timesheet"
-                                style={{ marginLeft: '10px' }}
                               >
                                 <FileText size={16} />
                                 Print
                               </button>
                             )}
-                          </div>
+                            </div>{/* end timesheet-header-bottom */}
+                          </div>{/* end timesheet-header */}
 
                           {/* Expanded Details */}
                           {isSelected && (
                             <div className="timesheet-expanded">
                               <h4>Session Details</h4>
                               <div className="sessions-detail-list">
-                                {timesheet.sessions.map((session: any) => (
-                                  <div key={session.id} className="session-detail-item">
-                                    <div className="session-detail-row">
-                                      <div className="session-detail-field">
-                                        <strong>Date:</strong> {new Date(session.start_time).toLocaleDateString()}
-                                      </div>
-                                      <div className="session-detail-field">
-                                        <strong>Time:</strong> {new Date(session.start_time).toLocaleTimeString()} - {new Date(session.end_time).toLocaleTimeString()}
-                                      </div>
-                                      <div className="session-detail-field">
-                                        <strong>Duration:</strong> {Math.floor(session.duration / 60)}h {session.duration % 60}m
-                                      </div>
-                                    </div>
-                                    <div className="session-detail-row">
-                                      <div className="session-detail-field">
-                                        <strong>Project:</strong> {session.project}
-                                      </div>
-                                      <div className="session-detail-field">
-                                        <strong>Role:</strong> {session.role}
-                                      </div>
-                                      <div className="session-detail-field">
-                                        <strong>Location:</strong> {session.location}
-                                      </div>
-                                    </div>
-                                    {/* Session note left by employee */}
-                                    {session.notes && (
-                                      <div className="session-notes-display" style={{ marginTop: '6px', padding: '6px 10px', background: '#f0f9ff', borderLeft: '3px solid #3b82f6', borderRadius: '4px', fontSize: '13px', color: '#1e40af' }}>
-                                        📝 <strong>Session Note:</strong> {session.notes}
-                                      </div>
-                                    )}
-                                    {/* Materials used in this session */}
-                                    {session.materials && session.materials.length > 0 && (
-                                      <div className="session-materials-used">
-                                        <strong>Materials Used:</strong>
-                                        <div className="materials-used-list">
-                                          {session.materials.map((m: any) => (
-                                            <div key={m.id} className="material-used-item">
-                                              <span className="material-used-name">{m.materials.name}</span>
-                                              <span className="material-used-qty">{m.quantity} {m.materials.unit}</span>
-                                              {m.notes && <span className="material-used-notes">({m.notes})</span>}
+                                {Object.entries(
+                                  timesheet.sessions.reduce((groups: Record<string, any[]>, session: any) => {
+                                    const dayKey = new Date(session.start_time).toDateString()
+                                    if (!groups[dayKey]) groups[dayKey] = []
+                                    groups[dayKey].push(session)
+                                    return groups
+                                  }, {})
+                                )
+                                .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
+                                .map(([dayKey, daySessions]) => {
+                                  const allDaySessions = daySessions as any[]
+                                  const dayDate = new Date(dayKey)
+                                  const dayWork = allDaySessions.filter((s: any) => s.project !== 'Lunch').reduce((sum: number, s: any) => sum + (s.duration || 0), 0)
+                                  const dayLunch = allDaySessions.filter((s: any) => s.project === 'Lunch').reduce((sum: number, s: any) => sum + (s.duration || 0), 0)
+                                  const dayHours = Math.floor(dayWork / 60)
+                                  const dayMins = dayWork % 60
+                                  const dayLabel = dayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+                                  const isExpanded = expandedDays.has(dayKey)
+                                  return (
+                                    <div key={dayKey} style={{ marginBottom: '8px', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
+                                      <button
+                                        onClick={() => setExpandedDays(prev => {
+                                          const next = new Set(prev)
+                                          if (next.has(dayKey)) next.delete(dayKey)
+                                          else next.add(dayKey)
+                                          return next
+                                        })}
+                                        style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: isExpanded ? '#f0f9ff' : '#f8fafc', border: 'none', cursor: 'pointer', textAlign: 'left', gap: '8px' }}
+                                      >
+                                        <span style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>{dayLabel}</span>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+                                          <span style={{ fontWeight: 700, color: '#16a34a', fontSize: '14px' }}>{dayHours}h {dayMins}m</span>
+                                          {dayLunch > 0 && <span style={{ fontSize: '12px', color: '#64748b' }}>+{Math.floor(dayLunch / 60) > 0 ? `${Math.floor(dayLunch / 60)}h ` : ''}{dayLunch % 60}m lunch</span>}
+                                          <span style={{ fontSize: '12px', color: '#64748b', background: '#e2e8f0', borderRadius: '999px', padding: '2px 8px' }}>{allDaySessions.length} session{allDaySessions.length !== 1 ? 's' : ''}</span>
+                                          <span style={{ color: '#64748b', fontSize: '12px' }}>{isExpanded ? '▲' : '▼'}</span>
+                                        </span>
+                                      </button>
+                                      {isExpanded && (
+                                        <div style={{ padding: '8px' }}>
+                                          {allDaySessions.map((session: any) => (
+                                            <div key={session.id} className="session-detail-item">
+                                              <div className="session-detail-row">
+                                                <div className="session-detail-field">
+                                                  <strong>Time:</strong> {new Date(session.start_time).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})} - {new Date(session.end_time).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
+                                                </div>
+                                                <div className="session-detail-field">
+                                                  <strong>Duration:</strong> {Math.floor(session.duration / 60)}h {session.duration % 60}m
+                                                </div>
+                                              </div>
+                                              <div className="session-detail-row">
+                                                <div className="session-detail-field">
+                                                  <strong>Project:</strong> {session.project}
+                                                </div>
+                                                <div className="session-detail-field">
+                                                  <strong>Role:</strong> {session.role}
+                                                </div>
+                                                <div className="session-detail-field">
+                                                  <strong>Location:</strong> {session.location}
+                                                </div>
+                                              </div>
+                                              {session.notes && (
+                                                <div className="session-notes-display" style={{ marginTop: '6px', padding: '6px 10px', background: '#f0f9ff', borderLeft: '3px solid #3b82f6', borderRadius: '4px', fontSize: '13px', color: '#1e40af' }}>
+                                                  📝 <strong>Session Note:</strong> {session.notes}
+                                                </div>
+                                              )}
+                                              {session.materials && session.materials.length > 0 && (
+                                                <div className="session-materials-used">
+                                                  <strong>Materials Used:</strong>
+                                                  <div className="materials-used-list">
+                                                    {session.materials.map((m: any) => (
+                                                      <div key={m.id} className="material-used-item">
+                                                        <span className="material-used-name">{m.materials.name}</span>
+                                                        <span className="material-used-qty">{m.quantity} {m.materials.unit}</span>
+                                                        {m.notes && <span className="material-used-notes">({m.notes})</span>}
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              )}
+                                              <div className="session-actions">
+                                                <button
+                                                  className="edit-session-btn"
+                                                  onClick={() => { setEditingSession(session); setShowEditModal(true) }}
+                                                >
+                                                  <Edit2 size={14} /> Edit
+                                                </button>
+                                                <button
+                                                  className="delete-session-btn"
+                                                  onClick={() => deleteSession(session.id)}
+                                                >
+                                                  <Trash2 size={14} /> Delete
+                                                </button>
+                                              </div>
                                             </div>
                                           ))}
                                         </div>
-                                      </div>
-                                    )}
-                                    <div className="session-actions">
-                                      <button 
-                                        className="edit-session-btn"
-                                        onClick={() => {
-                                          setEditingSession(session)
-                                          setShowEditModal(true)
-                                        }}
-                                      >
-                                        <Edit2 size={14} /> Edit
-                                      </button>
-                                      <button 
-                                        className="delete-session-btn"
-                                        onClick={() => deleteSession(session.id)}
-                                      >
-                                        <Trash2 size={14} /> Delete
-                                      </button>
+                                      )}
                                     </div>
-                                  </div>
-                                ))}
+                                  )
+                                })}
                               </div>
 
                               {/* Admin Actions */}

@@ -3494,13 +3494,13 @@ body {
   border-color: #ef4444;
 }
 
+/* Mobile: stack vertically */
 .timesheet-header {
-  padding: 1.5rem;
+  padding: 1rem;
   cursor: pointer;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.5rem;
   transition: background 0.2s;
 }
 
@@ -3508,45 +3508,102 @@ body {
   background: #f9fafb;
 }
 
+.timesheet-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
 .timesheet-user {
   flex: 1;
+  min-width: 0;
 }
 
 .timesheet-name {
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 1rem;
   color: #000000;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .timesheet-initials {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: #666;
 }
 
+.timesheet-status-badge {
+  padding: 0.3rem 0.75rem;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  border: 2px solid;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.timesheet-header-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .timesheet-details {
-  flex: 1;
-  text-align: right;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  align-items: center;
 }
 
 .timesheet-hours {
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: #22c55e;
 }
 
 .timesheet-week,
 .timesheet-submitted {
-  font-size: 0.85rem;
-  color: #666;
-}
+  font-size: 0.8rem;
 
-.timesheet-status-badge {
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
-  font-weight: 700;
-  font-size: 0.9rem;
-  border: 2px solid;
+/* Desktop: restore original single-row layout */
+@media (min-width: 640px) {
+  .timesheet-header {
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+  }
+
+  .timesheet-header-top {
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+  }
+
+  .timesheet-header-bottom {
+    flex-shrink: 0;
+    justify-content: flex-end;
+  }
+
+  .timesheet-name {
+    font-size: 1.1rem;
+  }
+
+  .timesheet-hours {
+    font-size: 1.3rem;
+  }
+
+  .timesheet-status-badge {
+    font-size: 0.9rem;
+    padding: 0.4rem 1rem;
+  }
+}
+  color: #666;
 }
 
 .timesheet-status-badge.submitted {
@@ -3601,14 +3658,16 @@ body {
 
 .session-detail-row {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
   margin-bottom: 0.5rem;
 }
 
 .session-detail-field {
-  flex: 1;
-  font-size: 0.9rem;
+  flex: 1 1 120px;
+  font-size: 0.85rem;
   color: #000000;
+  min-width: 0;
 }
 
 .session-actions {
